@@ -177,6 +177,18 @@ nano appsettings.Production.json
 dotnet restore
 dotnet build -c Release
 
+# 🎭 WICHTIG: Playwright Browser installieren (für JavaScript-Websites)
+pwsh bin/Release/net8.0/playwright.ps1 install chromium --with-deps
+
+# Falls PowerShell nicht verfügbar:
+sudo apt-get install -y powershell
+pwsh bin/Release/net8.0/playwright.ps1 install chromium --with-deps
+
+# Alternativ: Manuelle Installation (siehe docs/PLAYWRIGHT-SETUP.md)
+sudo apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
+    libcups2 libdrm2 libdbus-1-3 libxkbcommon0 libxcomposite1 libxdamage1 \
+    libxfixes3 libxrandr2 libgbm1 libasound2 libpango-1.0-0 libcairo2
+
 # Als Service mit Systemd einrichten
 sudo nano /etc/systemd/system/hotelchatbot-api.service
 ```

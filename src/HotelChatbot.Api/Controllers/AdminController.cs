@@ -1,6 +1,7 @@
 using HotelChatbot.Domain.Entities;
 using HotelChatbot.Domain.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using Swashbuckle.AspNetCore.Annotations;
 using System.Collections.Concurrent;
 
@@ -20,6 +21,7 @@ public class AdminController : ControllerBase
     private readonly IPlaywrightCrawlerService _playwrightCrawlerService;
     private readonly ILogger<AdminController> _logger;
     private readonly IServiceScopeFactory _serviceScopeFactory;
+    private readonly IMemoryCache _memoryCache;
 
     // In-Memory Status-Store für Crawl-Jobs
     private static readonly ConcurrentDictionary<string, CrawlJobStatus> _crawlJobs = new();
@@ -30,7 +32,8 @@ public class AdminController : ControllerBase
         ICrawlerService crawlerService,
         IPlaywrightCrawlerService playwrightCrawlerService,
         ILogger<AdminController> logger,
-        IServiceScopeFactory serviceScopeFactory)
+        IServiceScopeFactory serviceScopeFactory,
+        IMemoryCache memoryCache)
     {
         _vectorStore = vectorStore;
         _hotelRepository = hotelRepository;
@@ -38,6 +41,7 @@ public class AdminController : ControllerBase
         _playwrightCrawlerService = playwrightCrawlerService;
         _logger = logger;
         _serviceScopeFactory = serviceScopeFactory;
+        _memoryCache = memoryCache;
     }
 
     /// <summary>
@@ -494,6 +498,7 @@ Erstellt für jede URL automatisch ein Hotel mit generierter ID (z.B. hotel_stoc
                 var scopedVectorStore = scope.ServiceProvider.GetRequiredService<IVectorStore>();
                 var scopedHotelRepository = scope.ServiceProvider.GetRequiredService<IHotelRepository>();
                 var scopedCrawlerService = scope.ServiceProvider.GetRequiredService<ICrawlerService>();
+                var scopedPlaywrightCrawlerService = scope.ServiceProvider.GetRequiredService<IPlaywrightCrawlerService>();
                 var scopedLogger = scope.ServiceProvider.GetRequiredService<ILogger<AdminController>>();
                 
                 try
@@ -504,7 +509,9 @@ Erstellt für jede URL automatisch ein Hotel mit generierter ID (z.B. hotel_stoc
                         
                         try
                         {
-                            scopedLogger.LogInformation("Starte Crawling für {Url} ({Index}/{Total})", url, i + 1, request.Urls.Count);
+                            scopedLogger.LogWarning("═══════════════════════════════════════════════════");
+                            scopedLogger.LogWarning("🚀 STARTE CRAWLING FÜR {Url} ({Index}/{Total})", url, i + 1, request.Urls.Count);
+                            scopedLogger.LogWarning("═══════════════════════════════════════════════════");
 
                             // Hotel-ID aus Domain generieren
                             var uri = new Uri(url);
@@ -534,9 +541,19 @@ Erstellt für jede URL automatisch ein Hotel mit generierter ID (z.B. hotel_stoc
                                 scopedLogger.LogInformation("Hotel erstellt: {HotelId}", hotelId);
                             }
 
-                            // Alte Chunks löschen vor Re-Crawling
-                            scopedLogger.LogInformation("Lösche alte Chunks für {HotelId} vor Re-Crawling", hotelId);
-                            await scopedVectorStore.DeleteHotelChunksAsync(hotelId, CancellationToken.None);
+                            // Inkrementelles Crawling: Existierende URLs abrufen ODER alte Chunks löschen
+                            HashSet<string>? excludeUrls = null;
+                            if (request.SkipExistingUrls == true)
+                            {
+                                scopedLogger.LogInformation("🔄 Inkrementelles Crawling aktiviert - lade existierende URLs für {HotelId}", hotelId);
+                                excludeUrls = await scopedVectorStore.GetExistingUrlsAsync(hotelId, CancellationToken.None);
+                                scopedLogger.LogInformation("📋 {Count} URLs bereits indexiert, werden übersprungen", excludeUrls.Count);
+                            }
+                            else
+                            {
+                                scopedLogger.LogInformation("🗑️ Lösche alte Chunks für {HotelId} vor Re-Crawling", hotelId);
+                                await scopedVectorStore.DeleteHotelChunksAsync(hotelId, CancellationToken.None);
+                            }
 
                             // Sitemap-URL-Count ermitteln für TotalPages
                             if (request.UseSitemap ?? true)
@@ -591,6 +608,7 @@ Erstellt für jede URL automatisch ein Hotel mit generierter ID (z.B. hotel_stoc
 
                             // Batch-Sammlung für effiziente DB-Operationen
                             var chunkBatch = new List<ContentChunk>();
+                            var allChunksForQualityCheck = new List<ContentChunk>(); // Für Fallback-Prüfung
                             const int batchSize = 50;
                             int totalCrawled = 0;
 
@@ -599,6 +617,7 @@ Erstellt für jede URL automatisch ein Hotel mit generierter ID (z.B. hotel_stoc
                             {
                                 chunk.HotelId = hotelId;
                                 chunkBatch.Add(chunk);
+                                allChunksForQualityCheck.Add(chunk); // Für spätere Qualitätsprüfung
                                 totalCrawled++;
                                 
                                 // Status aktualisieren
@@ -618,17 +637,52 @@ Erstellt für jede URL automatisch ein Hotel mit generierter ID (z.B. hotel_stoc
                             // Entscheide zwischen Sitemap und rekursivem Crawling
                             if (request.UseSitemap ?? true)
                             {
-                                scopedLogger.LogInformation("Versuche Sitemap-basiertes Crawling für {HotelId}", hotelId);
+                                scopedLogger.LogWarning("🔍 Versuche Sitemap-basiertes Crawling für {HotelId}", hotelId);
                                 crawledCount = await scopedCrawlerService.CrawlFromSitemapAsync(
                                     url,
                                     new List<string> { baseHost, $"www.{baseHost}" },
                                     ProcessChunk,
+                                    excludeUrls,
                                     CancellationToken.None);
+
+                                scopedLogger.LogWarning("🔍 CrawlFromSitemapAsync zurückgekehrt: crawledCount={Count}, totalCrawled={Total}", crawledCount, totalCrawled);
 
                                 // Fallback zu rekursivem Crawling, wenn Sitemap leer ist
                                 if (crawledCount == 0)
                                 {
-                                    scopedLogger.LogInformation("Sitemap lieferte keine URLs. Fallback zu rekursivem Crawling für {HotelId}", hotelId);
+                                    // ⚠️ Bei inkrementellem Crawling keinen rekursiven Fallback
+                                    if (request.SkipExistingUrls == true)
+                                    {
+                                        scopedLogger.LogWarning("⚠️ Sitemap leer und inkrementelles Crawling aktiv");
+                                        scopedLogger.LogWarning("⏭️ Rekursives Crawling wird übersprungen (würde existierende URLs neu crawlen)");
+                                        scopedLogger.LogWarning("💡 Tipp: Für vollständiges Crawling 'Nur neue URLs' deaktivieren");
+                                    }
+                                    else
+                                    {
+                                        scopedLogger.LogWarning("Sitemap lieferte keine URLs. Fallback zu rekursivem Crawling für {HotelId}", hotelId);
+                                        crawledCount = await scopedCrawlerService.CrawlWebsiteAsync(
+                                            url,
+                                            request.MaxDepth ?? 2,
+                                            request.MaxPages ?? 200,
+                                            new List<string> { baseHost, $"www.{baseHost}" },
+                                            ProcessChunk,
+                                            CancellationToken.None);
+                                        
+                                        scopedLogger.LogWarning("🔍 CrawlWebsiteAsync zurückgekehrt: crawledCount={Count}, totalCrawled={Total}", crawledCount, totalCrawled);
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // ⚠️ Bei inkrementellem Crawling nur Sitemap-basiert unterstützt
+                                if (request.SkipExistingUrls == true)
+                                {
+                                    scopedLogger.LogWarning("⚠️ Rekursives Crawling mit inkrementeller Option nicht unterstützt");
+                                    scopedLogger.LogWarning("💡 Aktiviere 'Sitemap verwenden' oder deaktiviere 'Nur neue URLs'");
+                                }
+                                else
+                                {
+                                    scopedLogger.LogWarning("Verwende rekursives Crawling für {HotelId}", hotelId);
                                     crawledCount = await scopedCrawlerService.CrawlWebsiteAsync(
                                         url,
                                         request.MaxDepth ?? 2,
@@ -636,25 +690,160 @@ Erstellt für jede URL automatisch ein Hotel mit generierter ID (z.B. hotel_stoc
                                         new List<string> { baseHost, $"www.{baseHost}" },
                                         ProcessChunk,
                                         CancellationToken.None);
+                                    
+                                    scopedLogger.LogWarning("🔍 CrawlWebsiteAsync zurückgekehrt: crawledCount={Count}, totalCrawled={Total}", crawledCount, totalCrawled);
                                 }
                             }
-                            else
-                            {
-                                scopedLogger.LogInformation("Verwende rekursives Crawling für {HotelId}", hotelId);
-                                crawledCount = await scopedCrawlerService.CrawlWebsiteAsync(
-                                    url,
-                                    request.MaxDepth ?? 2,
-                                    request.MaxPages ?? 200,
-                                    new List<string> { baseHost, $"www.{baseHost}" },
-                                    ProcessChunk,
-                                    CancellationToken.None);
-                            }
+
+                            scopedLogger.LogWarning("🔍 VOR Batch-Speicherung: chunkBatch.Count={Count}", chunkBatch.Count);
 
                             // Restliche Chunks im Batch speichern
                             if (chunkBatch.Count > 0)
                             {
-                                scopedLogger.LogInformation("Speichere finalen Batch von {Count} Chunks für {HotelId}", chunkBatch.Count, hotelId);
+                                scopedLogger.LogWarning("Speichere finalen Batch von {Count} Chunks für {HotelId}", chunkBatch.Count, hotelId);
                                 await scopedVectorStore.AddChunksAsync(chunkBatch, CancellationToken.None);
+                            }
+
+                            scopedLogger.LogWarning("🔍 NACH Batch-Speicherung - gleich kommt Fallback-Prüfung...");
+                            scopedLogger.LogWarning("───────────────────────────────────────────────────");
+                            scopedLogger.LogWarning("📊 WEBCRAWLER ABGESCHLOSSEN für {HotelId}: {Count} Seiten gecrawlt", hotelId, totalCrawled);
+                            scopedLogger.LogWarning("───────────────────────────────────────────────────");
+
+                            // ============================================================
+                            // AUTOMATISCHER FALLBACK ZU PLAYWRIGHT BEI UNZUREICHENDEM CONTENT
+                            // ============================================================
+                            bool needsPlaywrightRetry = false;
+                            string retryReason = string.Empty;
+
+                            // Berechne durchschnittliche Content-Länge aus allen gecrawlten Chunks
+                            double avgContentLength = allChunksForQualityCheck.Any() 
+                                ? allChunksForQualityCheck.Average(c => c.Content?.Length ?? 0)
+                                : 0;
+
+                            scopedLogger.LogWarning(
+                                "📊 CONTENT-QUALITÄT: {Count} Chunks, Ø {AvgLength:F0} Zeichen, Expected: {Expected} URLs",
+                                totalCrawled, avgContentLength, jobStatus.CurrentHotelTotalPages);
+
+                            // Kriterium 1: Zu wenig Seiten gecrawlt (< 3 Seiten)
+                            if (totalCrawled < 3)
+                            {
+                                needsPlaywrightRetry = true;
+                                retryReason = $"Nur {totalCrawled} Seiten gecrawlt (Minimum: 3)";
+                                scopedLogger.LogWarning("⚠️ KRITERIUM 1 ERFÜLLT: {Reason}", retryReason);
+                            }
+                            // Kriterium 2: Sitemap hatte URLs, aber fast nichts wurde gecrawlt (< 20% Coverage)
+                            else if (jobStatus.CurrentHotelTotalPages > 0 && 
+                                     totalCrawled < jobStatus.CurrentHotelTotalPages * 0.2)
+                            {
+                                needsPlaywrightRetry = true;
+                                retryReason = $"Schlechte Coverage: {totalCrawled}/{jobStatus.CurrentHotelTotalPages} = {((double)totalCrawled / jobStatus.CurrentHotelTotalPages * 100):F1}%";
+                                scopedLogger.LogWarning("⚠️ KRITERIUM 2 ERFÜLLT: {Reason}", retryReason);
+                            }
+                            // Kriterium 3: Durchschnittliche Content-Länge zu gering
+                            else if (totalCrawled > 0 && avgContentLength < 500)
+                            {
+                                needsPlaywrightRetry = true;
+                                retryReason = $"Durchschnittliche Content-Länge zu gering: {avgContentLength:F0} Zeichen (Minimum: 500)";
+                                scopedLogger.LogWarning("⚠️ KRITERIUM 3 ERFÜLLT: {Reason}", retryReason);
+                            }
+                            else
+                            {
+                                scopedLogger.LogWarning("✓ KEIN FALLBACK-KRITERIUM ERFÜLLT - WebCrawler-Ergebnis wird verwendet");
+                            }
+
+                            if (needsPlaywrightRetry)
+                            {
+                                // ⚠️ WICHTIG: Bei inkrementellem Crawling (SkipExistingUrls) KEINEN Playwright-Fallback!
+                                // Grund: Fallback würde ALLE Chunks (inkl. existierende) löschen
+                                if (request.SkipExistingUrls == true)
+                                {
+                                    scopedLogger.LogWarning("═══════════════════════════════════════════════════");
+                                    scopedLogger.LogWarning("⏭️ PLAYWRIGHT-FALLBACK ÜBERSPRUNGEN für {HotelId}", hotelId);
+                                    scopedLogger.LogWarning("Grund (Fallback wäre nötig): {Reason}", retryReason);
+                                    scopedLogger.LogWarning("⚠️ Inkrementelles Crawling aktiviert → Bestehende Daten werden NICHT gelöscht");
+                                    scopedLogger.LogWarning("💡 Tipp: Für vollständiges Re-Crawling 'Nur neue URLs' deaktivieren");
+                                    scopedLogger.LogWarning("═══════════════════════════════════════════════════");
+                                    // Behalte die bereits gespeicherten Chunks, kein Playwright-Retry
+                                }
+                                else
+                                {
+                                    scopedLogger.LogError("═══════════════════════════════════════════════════");
+                                    scopedLogger.LogError("🎭 PLAYWRIGHT-FALLBACK AKTIVIERT für {HotelId}", hotelId);
+                                    scopedLogger.LogError("Grund: {Reason}", retryReason);
+                                    scopedLogger.LogError("═══════════════════════════════════════════════════");
+
+                                    // Alte Werte merken für Vergleich
+                                    int oldCrawledCount = totalCrawled;
+                                    double oldAvgContentLength = avgContentLength;
+
+                                    // Alte Chunks löschen (NUR bei vollständigem Re-Crawling)
+                                    scopedLogger.LogInformation("Lösche {Count} unzureichende Chunks vor Playwright-Retry", totalCrawled);
+                                    await scopedVectorStore.DeleteHotelChunksAsync(hotelId, CancellationToken.None);
+
+                                    // Reset für Playwright-Crawling
+                                    chunkBatch.Clear();
+                                    allChunksForQualityCheck.Clear();
+                                    totalCrawled = 0;
+                                    jobStatus.CurrentHotelPages = 0;
+
+                                    // Playwright-Crawling (ohne excludeUrls, da wir neu starten)
+                                    scopedLogger.LogInformation("🎭 Starte Playwright-Crawler für {HotelId}", hotelId);
+
+                                    if (request.UseSitemap ?? true)
+                                    {
+                                        scopedLogger.LogInformation("Versuche Sitemap-basiertes Playwright-Crawling für {HotelId}", hotelId);
+                                        crawledCount = await scopedPlaywrightCrawlerService.CrawlFromSitemapAsync(
+                                            url,
+                                            new List<string> { baseHost, $"www.{baseHost}" },
+                                            ProcessChunk,
+                                            null, // Keine excludeUrls beim Fallback, da wir alles neu crawlen
+                                            CancellationToken.None);
+
+                                        if (crawledCount == 0)
+                                        {
+                                            scopedLogger.LogInformation("Sitemap leer – Fallback zu rekursivem Playwright-Crawling für {HotelId}", hotelId);
+                                            crawledCount = await scopedPlaywrightCrawlerService.CrawlWebsiteAsync(
+                                                url,
+                                                request.MaxDepth ?? 2,
+                                                request.MaxPages ?? 200,
+                                                new List<string> { baseHost, $"www.{baseHost}" },
+                                                ProcessChunk,
+                                                CancellationToken.None);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        scopedLogger.LogInformation("Verwende rekursives Playwright-Crawling für {HotelId}", hotelId);
+                                        crawledCount = await scopedPlaywrightCrawlerService.CrawlWebsiteAsync(
+                                            url,
+                                            request.MaxDepth ?? 2,
+                                            request.MaxPages ?? 200,
+                                            new List<string> { baseHost, $"www.{baseHost}" },
+                                            ProcessChunk,
+                                            CancellationToken.None);
+                                    }
+
+                                    // Finale Chunks nach Playwright speichern
+                                    if (chunkBatch.Count > 0)
+                                    {
+                                        scopedLogger.LogInformation("Speichere finalen Playwright-Batch von {Count} Chunks für {HotelId}", chunkBatch.Count, hotelId);
+                                        await scopedVectorStore.AddChunksAsync(chunkBatch, CancellationToken.None);
+                                    }
+
+                                    // Berechne neue durchschnittliche Content-Länge nach Playwright
+                                    double newAvgContentLength = allChunksForQualityCheck.Any() 
+                                        ? allChunksForQualityCheck.Average(c => c.Content?.Length ?? 0)
+                                        : 0;
+
+                                    scopedLogger.LogError("═══════════════════════════════════════════════════");
+                                    scopedLogger.LogError(
+                                        "✅ PLAYWRIGHT-FALLBACK ERFOLGREICH für {HotelId}",
+                                        hotelId);
+                                    scopedLogger.LogError(
+                                        "Ergebnis: {NewCount} Seiten (vorher: {OldCount}), Ø {NewAvg:F0} Zeichen (vorher: {OldAvg:F0})",
+                                        totalCrawled, oldCrawledCount, newAvgContentLength, oldAvgContentLength);
+                                    scopedLogger.LogError("═══════════════════════════════════════════════════");
+                                }
                             }
 
                             jobStatus.Results.Add(new CrawlResult
@@ -665,9 +854,11 @@ Erstellt für jede URL automatisch ein Hotel mit generierter ID (z.B. hotel_stoc
                                 PagesProcessed = totalCrawled
                             });
 
-                            scopedLogger.LogInformation(
-                                "Crawling abgeschlossen für {HotelId}: {Count} Seiten",
+                            scopedLogger.LogWarning("═══════════════════════════════════════════════════");
+                            scopedLogger.LogWarning(
+                                "🏁 FINAL: {HotelId} abgeschlossen mit {Count} Seiten",
                                 hotelId, totalCrawled);
+                            scopedLogger.LogWarning("═══════════════════════════════════════════════════");
                         }
                         catch (Exception ex)
                         {
@@ -809,6 +1000,7 @@ Sicherstellen, dass Playwright-Browser installiert sind (`playwright install chr
                             url,
                             new List<string> { baseHost, $"www.{baseHost}" },
                             ProcessChunk,
+                            null, // excludeUrls - nicht verwendet im Headless-Endpoint
                             cancellationToken);
 
                         if (crawledCount == 0)
@@ -886,7 +1078,7 @@ Sicherstellen, dass Playwright-Browser installiert sind (`playwright install chr
     [HttpGet("crawl/hotels-analysis")]
     [SwaggerOperation(
         Summary = "🔍 Hotels-Crawl-Analyse",
-        Description = "Analysiert Crawling-Status für alle Hotels: gecrawlte Chunks, Sitemap-URLs, Probleme.",
+        Description = "Analysiert Crawling-Status für alle Hotels: gecrawlte Chunks, Sitemap-URLs, Probleme. ⚡ Optimiert mit Parallelisierung und Caching.",
         Tags = new[] { "🌐 Crawling & Indexierung" }
     )]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -895,127 +1087,10 @@ Sicherstellen, dass Playwright-Browser installiert sind (`playwright install chr
         try
         {
             var hotels = await _hotelRepository.GetAllAsync(cancellationToken);
-            var analysis = new List<object>();
-
-            foreach (var hotel in hotels)
-            {
-                try
-                {
-                    var chunkCount = await _vectorStore.GetChunkCountAsync(hotel.HotelId, cancellationToken);
-                    
-                    // Versuche Sitemap zu laden, um Seitenanzahl zu ermitteln
-                    int sitemapUrlCount = 0;
-                    string? sitemapStatus = null;
-                    
-                    try
-                    {
-                        var sitemapUrl = $"https://{hotel.Domain}/sitemap.xml";
-                        using var httpClient = new HttpClient();
-                        httpClient.Timeout = TimeSpan.FromSeconds(10);
-                        var response = await httpClient.GetAsync(sitemapUrl, cancellationToken);
-                        
-                        if (response.IsSuccessStatusCode)
-                        {
-                            var content = await response.Content.ReadAsStringAsync(cancellationToken);
-                            
-                            // Prüfe ob es ein Sitemap-Index ist
-                            if (content.Contains("<sitemapindex", StringComparison.OrdinalIgnoreCase))
-                            {
-                                // Extrahiere alle Sub-Sitemap URLs
-                                var subSitemapMatches = System.Text.RegularExpressions.Regex.Matches(
-                                    content, @"<loc>(.*?)</loc>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                                
-                                foreach (System.Text.RegularExpressions.Match match in subSitemapMatches)
-                                {
-                                    try
-                                    {
-                                        var subSitemapUrl = match.Groups[1].Value.Trim();
-                                        var subResponse = await httpClient.GetAsync(subSitemapUrl, cancellationToken);
-                                        
-                                        if (subResponse.IsSuccessStatusCode)
-                                        {
-                                            var subContent = await subResponse.Content.ReadAsStringAsync(cancellationToken);
-                                            var urlMatches = System.Text.RegularExpressions.Regex.Matches(
-                                                subContent, @"<url>\s*<loc>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                                            sitemapUrlCount += urlMatches.Count;
-                                        }
-                                    }
-                                    catch
-                                    {
-                                        // Sub-Sitemap konnte nicht geladen werden, ignorieren
-                                    }
-                                }
-                                sitemapStatus = sitemapUrlCount > 0 ? "found_index" : "found_empty";
-                            }
-                            else
-                            {
-                                // Reguläre Sitemap - zähle URLs direkt
-                                var urlMatches = System.Text.RegularExpressions.Regex.Matches(
-                                    content, @"<url>\s*<loc>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                                sitemapUrlCount = urlMatches.Count;
-                                sitemapStatus = "found";
-                            }
-                        }
-                        else
-                        {
-                            sitemapStatus = "not_found";
-                        }
-                    }
-                    catch
-                    {
-                        sitemapStatus = "error";
-                    }
-
-                    // Diagnose-Status bestimmen
-                    string status;
-                    if (chunkCount == 0)
-                    {
-                        status = "not_crawled";
-                    }
-                    else if (chunkCount < 10)
-                    {
-                        status = "problematic";
-                    }
-                    else if (chunkCount < 30)
-                    {
-                        status = "warning";
-                    }
-                    else
-                    {
-                        status = "good";
-                    }
-
-                    analysis.Add(new
-                    {
-                        hotelId = hotel.HotelId,
-                        name = hotel.Name,
-                        domain = hotel.Domain,
-                        isActive = hotel.IsActive,
-                        chunks = chunkCount,
-                        sitemapUrls = sitemapUrlCount,
-                        sitemapStatus = sitemapStatus,
-                        status = status,
-                        coverage = sitemapUrlCount > 0 ? ((double)chunkCount / sitemapUrlCount * 100).ToString("F1") + "%" : "n/a"
-                    });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Fehler bei Analyse von {HotelId}", hotel.HotelId);
-                    analysis.Add(new
-                    {
-                        hotelId = hotel.HotelId,
-                        name = hotel.Name,
-                        domain = hotel.Domain,
-                        isActive = hotel.IsActive,
-                        chunks = 0,
-                        sitemapUrls = 0,
-                        sitemapStatus = "error",
-                        status = "error",
-                        coverage = "n/a",
-                        error = ex.Message
-                    });
-                }
-            }
+            
+            // ⚡ OPTIMIERUNG: Alle Hotels parallel analysieren statt sequenziell
+            var analysisTasks = hotels.Select(hotel => AnalyzeHotelAsync(hotel, cancellationToken));
+            var analysis = await Task.WhenAll(analysisTasks);
 
             return Ok(new
             {
@@ -1027,6 +1102,195 @@ Sicherstellen, dass Playwright-Browser installiert sind (`playwright install chr
         {
             _logger.LogError(ex, "Fehler bei Hotels-Analyse");
             return StatusCode(500, new { error = "Interner Serverfehler" });
+        }
+    }
+
+    /// <summary>
+    /// Analysiert ein einzelnes Hotel (mit Caching für Sitemap-Daten).
+    /// </summary>
+    private async Task<object> AnalyzeHotelAsync(Domain.Entities.Hotel hotel, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var chunkCount = await _vectorStore.GetChunkCountAsync(hotel.HotelId, cancellationToken);
+            
+            // ⚡ OPTIMIERUNG: Sitemap-Daten aus Cache laden
+            // Erfolgreiche Requests: 1 Stunde, Fehler: 5 Minuten
+            var cacheKey = $"sitemap_{hotel.Domain}";
+            var sitemapData = await _memoryCache.GetOrCreateAsync(cacheKey, async entry =>
+            {
+                var data = await LoadSitemapDataAsync(hotel.Domain, cancellationToken);
+                
+                // Fehler kürzer cachen als erfolgreiche Requests
+                if (data?.Status == "error" || data?.Status == "not_found" || data?.UrlCount == 0)
+                {
+                    entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
+                }
+                else
+                {
+                    entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1);
+                }
+                
+                return data;
+            });
+
+            // Diagnose-Status bestimmen
+            string status;
+            if (chunkCount == 0)
+            {
+                status = "not_crawled";
+            }
+            else if (chunkCount < 10)
+            {
+                status = "problematic";
+            }
+            else if (chunkCount < 30)
+            {
+                status = "warning";
+            }
+            else
+            {
+                status = "good";
+            }
+
+            return new
+            {
+                hotelId = hotel.HotelId,
+                name = hotel.Name,
+                domain = hotel.Domain,
+                isActive = hotel.IsActive,
+                chunks = chunkCount,
+                sitemapUrls = sitemapData?.UrlCount ?? 0,
+                sitemapStatus = sitemapData?.Status ?? "unknown",
+                status = status,
+                coverage = sitemapData?.UrlCount > 0 
+                    ? ((double)chunkCount / sitemapData.UrlCount * 100).ToString("F1") + "%" 
+                    : "n/a"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Fehler bei Analyse von {HotelId}", hotel.HotelId);
+            return new
+            {
+                hotelId = hotel.HotelId,
+                name = hotel.Name,
+                domain = hotel.Domain,
+                isActive = hotel.IsActive,
+                chunks = 0,
+                sitemapUrls = 0,
+                sitemapStatus = "error",
+                status = "error",
+                coverage = "n/a",
+                error = ex.Message
+            };
+        }
+    }
+
+    /// <summary>
+    /// Lädt Sitemap-Daten (URL-Count und Status) für eine Domain.
+    /// Unterstützt Sitemap-Indizes mit parallelem Laden der Sub-Sitemaps.
+    /// </summary>
+    private async Task<SitemapData?> LoadSitemapDataAsync(string domain, CancellationToken cancellationToken)
+    {
+        using var httpClient = new HttpClient();
+        httpClient.Timeout = TimeSpan.FromSeconds(10); // Erhöht für Sitemap-Indizes mit mehreren Sub-Sitemaps
+        
+        try
+        {
+            var sitemapUrl = $"https://{domain}/sitemap.xml";
+            _logger.LogDebug("Lade Sitemap für {Domain}: {Url}", domain, sitemapUrl);
+            
+            var response = await httpClient.GetAsync(sitemapUrl, cancellationToken);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Sitemap nicht gefunden für {Domain}: HTTP {StatusCode}", domain, response.StatusCode);
+                return new SitemapData { Status = "not_found", UrlCount = 0 };
+            }
+
+            var content = await response.Content.ReadAsStringAsync(cancellationToken);
+            int urlCount = 0;
+            string status;
+            
+            // Prüfe ob es ein Sitemap-Index ist
+            if (content.Contains("<sitemapindex", StringComparison.OrdinalIgnoreCase))
+            {
+                // Extrahiere alle Sub-Sitemap URLs
+                var subSitemapMatches = System.Text.RegularExpressions.Regex.Matches(
+                    content, @"<loc>(.*?)</loc>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                
+                var subSitemapUrls = subSitemapMatches.Select(m => m.Groups[1].Value.Trim()).ToList();
+                _logger.LogDebug("Sitemap-Index für {Domain} enthält {Count} Sub-Sitemaps", domain, subSitemapUrls.Count);
+                
+                // ⚡ OPTIMIERUNG: Sub-Sitemaps parallel laden
+                var subSitemapTasks = subSitemapUrls.Select(async (subSitemapUrl, index) =>
+                {
+                    try
+                    {
+                        _logger.LogDebug("Lade Sub-Sitemap {Index}/{Total} für {Domain}: {Url}", 
+                            index + 1, subSitemapUrls.Count, domain, subSitemapUrl);
+                            
+                        var subResponse = await httpClient.GetAsync(subSitemapUrl, cancellationToken);
+                        if (subResponse.IsSuccessStatusCode)
+                        {
+                            var subContent = await subResponse.Content.ReadAsStringAsync(cancellationToken);
+                            var urlMatches = System.Text.RegularExpressions.Regex.Matches(
+                                subContent, @"<url>\s*<loc>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            
+                            _logger.LogDebug("Sub-Sitemap {Index} für {Domain} enthält {Count} URLs", 
+                                index + 1, domain, urlMatches.Count);
+                            
+                            return urlMatches.Count;
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Sub-Sitemap {Index} für {Domain} fehlgeschlagen: HTTP {StatusCode}", 
+                                index + 1, domain, subResponse.StatusCode);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Fehler beim Laden von Sub-Sitemap {Index} für {Domain}: {Url}", 
+                            index + 1, domain, subSitemapUrl);
+                    }
+                    return 0;
+                });
+                
+                var subSitemapCounts = await Task.WhenAll(subSitemapTasks);
+                urlCount = subSitemapCounts.Sum();
+                status = urlCount > 0 ? "found_index" : "found_empty";
+                
+                _logger.LogInformation("Sitemap-Index für {Domain}: {Total} URLs aus {SubSitemaps} Sub-Sitemaps", 
+                    domain, urlCount, subSitemapUrls.Count);
+            }
+            else
+            {
+                // Reguläre Sitemap - zähle URLs direkt
+                var urlMatches = System.Text.RegularExpressions.Regex.Matches(
+                    content, @"<url>\s*<loc>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                urlCount = urlMatches.Count;
+                status = "found";
+                
+                _logger.LogDebug("Reguläre Sitemap für {Domain}: {Count} URLs", domain, urlCount);
+            }
+
+            return new SitemapData { Status = status, UrlCount = urlCount };
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogWarning("Timeout beim Laden der Sitemap für {Domain}: {Message}", domain, ex.Message);
+            return new SitemapData { Status = "error", UrlCount = 0 };
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "HTTP-Fehler beim Laden der Sitemap für {Domain}", domain);
+            return new SitemapData { Status = "error", UrlCount = 0 };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Unerwarteter Fehler beim Laden der Sitemap für {Domain}", domain);
+            return new SitemapData { Status = "error", UrlCount = 0 };
         }
     }
 
@@ -1268,6 +1532,93 @@ Sicherstellen, dass Playwright-Browser installiert sind (`playwright install chr
         
         return NotFound(new { error = "Job nicht gefunden" });
     }
+
+    /// <summary>
+    /// Testet den Crawler mit automatischem Playwright-Fallback.
+    /// </summary>
+    [HttpPost("test-crawler")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> TestCrawler(
+        [FromBody] TestCrawlerRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var url = request.Url;
+            
+            _logger.LogInformation("🧪 CRAWLER-TEST gestartet für: {Url}", url);
+            
+            // Phase 1: WebCrawler (Standard)
+            var webCrawlerStart = DateTime.UtcNow;
+            var webChunk = await _crawlerService.CrawlPageAsync(url, cancellationToken);
+            var webCrawlerDuration = (DateTime.UtcNow - webCrawlerStart).TotalMilliseconds;
+            
+            var webResult = new
+            {
+                success = webChunk != null,
+                contentLength = webChunk?.Content?.Length ?? 0,
+                title = webChunk?.Title ?? "N/A",
+                language = webChunk?.Language ?? "N/A",
+                content = webChunk?.Content ?? "Kein Content gefunden",
+                durationMs = (int)webCrawlerDuration
+            };
+            
+            _logger.LogInformation("📊 WebCrawler: {Length} Zeichen in {Duration}ms", 
+                webResult.contentLength, webResult.durationMs);
+            
+            // Phase 2: Prüfe ob Playwright-Fallback nötig ist
+            bool needsPlaywright = webChunk == null || webChunk.Content.Length < 50;
+            
+            object? playwrightResult = null;
+            
+            if (needsPlaywright)
+            {
+                _logger.LogWarning("🎭 PLAYWRIGHT-FALLBACK wird gestartet (WebCrawler: {Length} Zeichen)", 
+                    webResult.contentLength);
+                
+                var playwrightStart = DateTime.UtcNow;
+                var playwrightChunk = await _playwrightCrawlerService.CrawlPageAsync(url, cancellationToken);
+                var playwrightDuration = (DateTime.UtcNow - playwrightStart).TotalMilliseconds;
+                
+                var playwrightContentLength = playwrightChunk?.Content?.Length ?? 0;
+                
+                playwrightResult = new
+                {
+                    success = playwrightChunk != null,
+                    contentLength = playwrightContentLength,
+                    title = playwrightChunk?.Title ?? "N/A",
+                    language = playwrightChunk?.Language ?? "N/A",
+                    content = playwrightChunk?.Content ?? "Kein Content gefunden",
+                    durationMs = (int)playwrightDuration
+                };
+                
+                _logger.LogInformation("✅ Playwright: {Length} Zeichen in {Duration}ms", 
+                    playwrightContentLength, 
+                    (int)playwrightDuration);
+            }
+            else
+            {
+                _logger.LogInformation("✓ WebCrawler erfolgreich - kein Playwright-Fallback nötig");
+            }
+            
+            return Ok(new
+            {
+                url,
+                timestamp = DateTime.UtcNow,
+                webCrawler = webResult,
+                playwrightFallback = playwrightResult,
+                fallbackTriggered = needsPlaywright,
+                recommendation = needsPlaywright 
+                    ? "Playwright wird empfohlen für diese Website (SPA/JavaScript-Heavy)" 
+                    : "WebCrawler reicht aus für diese Website"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Fehler beim Crawler-Test");
+            return StatusCode(500, new { error = "Interner Serverfehler", details = ex.Message });
+        }
+    }
 }
 
 /// <summary>
@@ -1350,6 +1701,14 @@ public class CrawlMultipleRequest
     /// </summary>
     [SwaggerSchema("[Fallback] Max. Seiten wenn keine Sitemap")]
     public int? MaxPages { get; set; } = 200;
+
+    /// <summary>
+    /// Nur neue URLs crawlen (überspringe bereits indexierte URLs).
+    /// Standard: false (alle URLs werden neu gecrawlt, alte Daten werden gelöscht).
+    /// Bei true: Behält bestehende Chunks und crawlt nur neue URLs aus der Sitemap.
+    /// </summary>
+    [SwaggerSchema("Nur neue URLs crawlen (inkrementelles Crawling)")]
+    public bool? SkipExistingUrls { get; set; } = false;
 }
 
 /// <summary>
@@ -1380,6 +1739,14 @@ public class CrawlMultipleHeadlessRequest
     /// </summary>
     [SwaggerSchema("[Fallback] Max. Seiten wenn keine Sitemap")]
     public int? MaxPages { get; set; } = 200;
+
+    /// <summary>
+    /// Nur neue URLs crawlen (überspringe bereits indexierte URLs).
+    /// Standard: false (alle URLs werden neu gecrawlt, alte Daten werden gelöscht).
+    /// Bei true: Behält bestehende Chunks und crawlt nur neue URLs aus der Sitemap.
+    /// </summary>
+    [SwaggerSchema("Nur neue URLs crawlen (inkrementelles Crawling)")]
+    public bool? SkipExistingUrls { get; set; } = false;
 }
 
 /// <summary>
@@ -1399,6 +1766,14 @@ public class CrawlResult
     public bool Success { get; set; }
     public int PagesProcessed { get; set; }
     public string? Error { get; set; }
+}
+
+/// <summary>
+/// Request-DTO für Crawler-Test.
+/// </summary>
+public class TestCrawlerRequest
+{
+    public required string Url { get; set; }
 }
 
 /// <summary>
@@ -1435,4 +1810,20 @@ public class CrawlJobStatus
     public DateTime StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public List<CrawlResult> Results { get; set; } = new();
+    
+    // Detaillierte Statistiken
+    public int PagesAttempted { get; set; }       // Gesamt versucht
+    public int PagesSuccessful { get; set; }      // Erfolgreich gecrawlt
+    public int PagesSkipped { get; set; }         // Übersprungen (existiert bereits)
+    public int PagesLowContent { get; set; }      // Zu wenig Content (< 50 Zeichen)
+    public int PagesError { get; set; }           // Fehler beim Crawlen
+}
+
+/// <summary>
+/// Gecachte Sitemap-Daten für Performance-Optimierung.
+/// </summary>
+internal class SitemapData
+{
+    public string Status { get; set; } = string.Empty;
+    public int UrlCount { get; set; }
 }

@@ -39,6 +39,40 @@ function Write-OK($text)   { Write-Host "  OK $text" -ForegroundColor Green }
 function Write-Info($text) { Write-Host "  * $text" -ForegroundColor Gray }
 
 # -----------------------------------------------------------------------------
+# Beende alle laufenden Prozesse (dotnet, node)
+# -----------------------------------------------------------------------------
+function Stop-RunningProcesses {
+    Write-Step "Beende laufende dotnet- und node-Prozesse..."
+    
+    $processes = Get-Process | Where-Object { 
+        $_.ProcessName -match "dotnet|node" -and 
+        $_.ProcessName -ne "escape-node-job" 
+    }
+    
+    if ($processes) {
+        foreach ($proc in $processes) {
+            try {
+                Write-Info "Beende Prozess: $($proc.ProcessName) (PID: $($proc.Id))"
+                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            }
+            catch {
+                Write-Host "  ! Konnte Prozess $($proc.Id) nicht beenden" -ForegroundColor Red
+            }
+        }
+        Start-Sleep -Seconds 2
+        Write-OK "Alle Prozesse beendet."
+    }
+    else {
+        Write-Info "Keine laufenden dotnet- oder node-Prozesse gefunden."
+    }
+}
+
+# Beende zuerst alle laufenden Prozesse (außer bei -Stop Parameter)
+if (-not $Stop) {
+    Stop-RunningProcesses
+}
+
+# -----------------------------------------------------------------------------
 # STOP
 # -----------------------------------------------------------------------------
 if ($Stop) {

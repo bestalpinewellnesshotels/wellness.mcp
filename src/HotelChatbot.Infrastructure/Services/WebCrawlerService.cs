@@ -68,17 +68,18 @@ public class WebCrawlerService : ICrawlerService
 
             try
             {
-                var chunk = await CrawlPageAsync(currentUrl, cancellationToken);
+                // HTML einmal laden und für Content + Links verwenden
+                var (chunk, htmlDoc) = await CrawlPageWithDocumentAsync(currentUrl, cancellationToken);
                 if (chunk != null)
                 {
                     chunks.Add(chunk);
                     _logger.LogInformation("Seite gecrawlt: {Url} ({Count}/{Max})", currentUrl, chunks.Count, maxPages);
                 }
 
-                // Links extrahieren für weitere Ebenen
-                if (depth < maxDepth)
+                // Links extrahieren für weitere Ebenen (aus bereits geladenem HTML)
+                if (depth < maxDepth && htmlDoc != null)
                 {
-                    var links = await ExtractLinksAsync(currentUrl, allowedDomainsSet, cancellationToken);
+                    var links = ExtractLinksFromDocument(htmlDoc, new Uri(currentUrl), allowedDomainsSet);
                     foreach (var link in links)
                     {
                         if (!_visitedUrls.Contains(link))
@@ -240,26 +241,94 @@ public class WebCrawlerService : ICrawlerService
     }
 
     /// <summary>
-    /// Extrahiert Links von einer Seite.
+    /// Crawlt eine Seite und gibt sowohl den Content-Chunk als auch das HTML-Document zurück.
+    /// Vermeidet doppeltes Laden der Seite für Content- und Link-Extraktion.
     /// </summary>
-    private async Task<List<string>> ExtractLinksAsync(
+    private async Task<(ContentChunk? Chunk, HtmlDocument? Document)> CrawlPageWithDocumentAsync(
         string url,
-        HashSet<string> allowedDomains,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
-        var links = new List<string>();
-
         try
         {
+            // Überspringe Media- und Resource-Dateien
+            if (IsResourceFile(url))
+            {
+                _logger.LogDebug("Überspringe Resource-Datei: {Url}", url);
+                return (null, null);
+            }
+
             var response = await _httpClient.GetAsync(url, cancellationToken);
             if (!response.IsSuccessStatusCode)
-                return links;
+            {
+                _logger.LogWarning("HTTP {Status} für {Url}", response.StatusCode, url);
+                return (null, null);
+            }
 
             var html = await response.Content.ReadAsStringAsync(cancellationToken);
             var doc = new HtmlDocument();
             doc.LoadHtml(html);
 
-            var baseUri = new Uri(url);
+            // Titel extrahieren
+            var title = doc.DocumentNode.SelectSingleNode("//title")?.InnerText?.Trim()
+                ?? doc.DocumentNode.SelectSingleNode("//h1")?.InnerText?.Trim()
+                ?? "Untitled";
+
+            // Content extrahieren
+            var content = ExtractContent(doc);
+
+            if (string.IsNullOrWhiteSpace(content) || content.Length < 50)
+            {
+                _logger.LogWarning("Zu wenig Content auf {Url} (nur {Length} Zeichen)", url, content?.Length ?? 0);
+                return (null, doc); // Document zurückgeben für Link-Extraktion
+            }
+
+            // Content kürzen auf max 15000 Zeichen
+            if (content.Length > 15000)
+            {
+                _logger.LogWarning("Content zu groß ({Length} Zeichen), wird gekürzt auf 15000", content.Length);
+                content = content.Substring(0, 15000);
+                var lastPeriod = content.LastIndexOf('.');
+                if (lastPeriod > 12000)
+                {
+                    content = content.Substring(0, lastPeriod + 1);
+                }
+            }
+
+            var language = DetectLanguage(content);
+
+            var chunk = new ContentChunk
+            {
+                ChunkId = Guid.NewGuid().ToString(),
+                HotelId = string.Empty,
+                SourceUrl = url,
+                Content = content,
+                Title = CleanText(title),
+                Language = language,
+                IsActive = true,
+                CrawledAt = DateTime.UtcNow
+            };
+
+            return (chunk, doc);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Fehler beim Crawlen von {Url}", url);
+            return (null, null);
+        }
+    }
+
+    /// <summary>
+    /// Extrahiert Links aus einem bereits geladenen HTML-Document.
+    /// </summary>
+    private List<string> ExtractLinksFromDocument(
+        HtmlDocument doc,
+        Uri baseUri,
+        HashSet<string> allowedDomains)
+    {
+        var links = new List<string>();
+
+        try
+        {
             var linkNodes = doc.DocumentNode.SelectNodes("//a[@href]");
 
             if (linkNodes == null)
@@ -286,6 +355,38 @@ public class WebCrawlerService : ICrawlerService
                     }
                 }
             }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Fehler beim Extrahieren von Links von {Url}", baseUri);
+        }
+
+        return links.Distinct().ToList();
+    }
+
+    /// <summary>
+    /// Extrahiert Links von einer Seite (lädt die Seite per HTTP).
+    /// DEPRECATED: Verwende stattdessen CrawlPageWithDocumentAsync + ExtractLinksFromDocument.
+    /// </summary>
+    private async Task<List<string>> ExtractLinksAsync(
+        string url,
+        HashSet<string> allowedDomains,
+        CancellationToken cancellationToken)
+    {
+        var links = new List<string>();
+
+        try
+        {
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return links;
+
+            var html = await response.Content.ReadAsStringAsync(cancellationToken);
+            var doc = new HtmlDocument();
+            doc.LoadHtml(html);
+
+            var baseUri = new Uri(url);
+            return ExtractLinksFromDocument(doc, baseUri, allowedDomains);
         }
         catch (Exception ex)
         {
@@ -476,7 +577,8 @@ public class WebCrawlerService : ICrawlerService
 
             try
             {
-                var chunk = await CrawlPageAsync(currentUrl, cancellationToken);
+                // HTML einmal laden und für Content + Links verwenden
+                var (chunk, htmlDoc) = await CrawlPageWithDocumentAsync(currentUrl, cancellationToken);
                 if (chunk != null)
                 {
                     crawledCount++;
@@ -486,10 +588,10 @@ public class WebCrawlerService : ICrawlerService
                     await onChunkCrawled(chunk);
                 }
 
-                // Links extrahieren für weitere Ebenen
-                if (depth < maxDepth)
+                // Links extrahieren für weitere Ebenen (aus bereits geladenem HTML)
+                if (depth < maxDepth && htmlDoc != null)
                 {
-                    var links = await ExtractLinksAsync(currentUrl, allowedDomainsSet, cancellationToken);
+                    var links = ExtractLinksFromDocument(htmlDoc, new Uri(currentUrl), allowedDomainsSet);
                     foreach (var link in links)
                     {
                         if (!_visitedUrls.Contains(link))
@@ -520,11 +622,13 @@ public class WebCrawlerService : ICrawlerService
         string baseUrl,
         List<string>? allowedDomains,
         Func<ContentChunk, Task> onChunkCrawled,
+        HashSet<string>? excludeUrls = null,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Starte Sitemap-basiertes Crawling mit Callback für {BaseUrl}", baseUrl);
 
         int crawledCount = 0;
+        int skippedCount = 0;
         var baseUri = new Uri(baseUrl);
         var allowedDomainsSet = allowedDomains?.ToHashSet() ?? new HashSet<string> { baseUri.Host };
 
@@ -565,11 +669,24 @@ public class WebCrawlerService : ICrawlerService
                 .ToList();
 
             _logger.LogInformation("Nach Filterung: {Count} zu crawlende URLs", uniqueUrls.Count);
+            
+            if (excludeUrls != null && excludeUrls.Count > 0)
+            {
+                _logger.LogInformation("📋 {Count} existierende URLs werden übersprungen", excludeUrls.Count);
+            }
 
             foreach (var url in uniqueUrls)
             {
                 if (cancellationToken.IsCancellationRequested)
                     break;
+
+                // Überspringe bereits indexierte URLs
+                if (excludeUrls?.Contains(url) == true)
+                {
+                    skippedCount++;
+                    _logger.LogDebug("⏭️ URL übersprungen (bereits indexiert): {Url}", url);
+                    continue;
+                }
 
                 try
                 {
@@ -577,7 +694,7 @@ public class WebCrawlerService : ICrawlerService
                     if (chunk != null)
                     {
                         crawledCount++;
-                        _logger.LogInformation("Seite gecrawlt: {Url} ({Count}/{Total})", url, crawledCount, uniqueUrls.Count);
+                        _logger.LogInformation("Seite gecrawlt: {Url} ({Count}/{Total})", url, crawledCount, uniqueUrls.Count - skippedCount);
                         
                         // Callback sofort aufrufen
                         await onChunkCrawled(chunk);
@@ -592,7 +709,8 @@ public class WebCrawlerService : ICrawlerService
                 await Task.Delay(500, cancellationToken);
             }
 
-            _logger.LogInformation("Sitemap-Crawling mit Callback abgeschlossen: {Count} Seiten gecrawlt von {Total} URLs", crawledCount, uniqueUrls.Count);
+            _logger.LogInformation("Sitemap-Crawling mit Callback abgeschlossen: {Crawled} Seiten gecrawlt, {Skipped} übersprungen von {Total} URLs", 
+                crawledCount, skippedCount, uniqueUrls.Count);
         }
         catch (Exception ex)
         {

@@ -265,6 +265,10 @@
     <span class="tab-dot" style="background:#059669"></span>
     Crawling
   </button>
+  <button class="tab-btn" style="--tab-color:#dc2626" onclick="switchTab('test',this)">
+    <span class="tab-dot" style="background:#dc2626"></span>
+    Crawler Test
+  </button>
 </div>
 
 <main>
@@ -293,6 +297,10 @@
     <div class="toolbar">
       <span class="toolbar-desc">Verwalte Hotels und analysiere Crawling-Probleme</span>
       <div class="toolbar-actions">
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8125rem;cursor:pointer;">
+          <input type="checkbox" id="skip-existing-urls" style="cursor:pointer;">
+          <span>Nur neue URLs crawlen</span>
+        </label>
         <button class="btn-primary btn-sm" onclick="loadCrawlData()">&#8635; Aktualisieren</button>
         <button class="btn-ghost btn-sm" onclick="crawlSelectedHotels()">🚀 Ausgewählte crawlen</button>
       </div>
@@ -350,6 +358,120 @@
       <div>
         <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:0.5rem;">💡 EMPFEHLUNGEN</div>
         <ul id="detail-recommendations" style="list-style:none;padding:0;font-size:0.8125rem;line-height:1.8;"></ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-test">
+    <div class="toolbar">
+      <span class="toolbar-desc">Teste einzelne URLs mit automatischem Playwright-Fallback</span>
+    </div>
+    
+    <div style="margin-bottom:1.5rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1rem;">
+      <h3 style="font-size:0.875rem;font-weight:600;margin-bottom:1rem;">🧪 Crawler-Test mit automatischem Fallback</h3>
+      
+      <div style="display:flex;gap:0.75rem;align-items:flex-end;margin-bottom:1rem;">
+        <div style="flex:1;">
+          <label style="font-size:0.8125rem;font-weight:500;display:block;margin-bottom:0.3rem;">Test-URL</label>
+          <input 
+            id="test-url" 
+            type="text" 
+            value="https://seefeld.sacher.com/haubenkueche/"
+            placeholder="https://example.com/page"
+            style="width:100%;border:1px solid var(--border);border-radius:var(--r);padding:0.5rem 0.75rem;font-size:0.875rem;font-family:inherit;"
+          />
+        </div>
+        <button class="btn-primary" onclick="runCrawlerTest()" style="white-space:nowrap;">
+          🚀 Test starten
+        </button>
+      </div>
+      
+      <div style="font-size:0.75rem;color:var(--muted);line-height:1.6;">
+        <strong>So funktioniert der Test:</strong><br>
+        1️⃣ Zuerst wird der <strong>WebCrawler</strong> (Standard HTTP) versucht<br>
+        2️⃣ Bei &lt; 50 Zeichen startet automatisch <strong>Playwright</strong> (Browser-Rendering)<br>
+        3️⃣ Beide Ergebnisse werden angezeigt
+      </div>
+    </div>
+
+    <div id="test-results" style="display:none;">
+      <!-- WebCrawler Result -->
+      <div style="margin-bottom:1.5rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;">
+        <div style="padding:0.75rem 1rem;background:#eff6ff;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:0.5rem;">
+            <span style="font-size:1.2rem;">🌐</span>
+            <h3 style="font-size:0.875rem;font-weight:600;">WebCrawler (Standard HTTP)</h3>
+          </div>
+          <span id="web-status" style="font-size:0.75rem;font-weight:600;"></span>
+        </div>
+        <div style="padding:1rem;">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem;">
+            <div>
+              <div style="font-size:0.7rem;color:var(--muted);margin-bottom:0.25rem;">Content-Länge</div>
+              <div style="font-size:1.1rem;font-weight:700;" id="web-length">-</div>
+            </div>
+            <div>
+              <div style="font-size:0.7rem;color:var(--muted);margin-bottom:0.25rem;">Dauer</div>
+              <div style="font-size:1.1rem;font-weight:700;" id="web-duration">-</div>
+            </div>
+            <div>
+              <div style="font-size:0.7rem;color:var(--muted);margin-bottom:0.25rem;">Sprache</div>
+              <div style="font-size:1.1rem;font-weight:700;" id="web-language">-</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:0.5rem;">📄 Titel</div>
+            <div style="font-family:var(--mono);font-size:0.8125rem;margin-bottom:1rem;color:var(--text);" id="web-title">-</div>
+          </div>
+          <div>
+            <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:0.5rem;">📝 Content (Vorschau)</div>
+            <pre style="font-family:var(--mono);font-size:0.75rem;line-height:1.6;color:var(--muted);white-space:pre-wrap;word-break:break-word;background:var(--bg);padding:0.75rem;border-radius:var(--r);max-height:300px;overflow-y:auto;" id="web-content">-</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Playwright Result -->
+      <div id="playwright-section" style="display:none;margin-bottom:1.5rem;background:var(--surface);border:1px solid #fecaca;border-radius:var(--r);overflow:hidden;">
+        <div style="padding:0.75rem 1rem;background:#fef2f2;border-bottom:1px solid #fecaca;display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:0.5rem;">
+            <span style="font-size:1.2rem;">🎭</span>
+            <h3 style="font-size:0.875rem;font-weight:600;color:#b91c1c;">Playwright Fallback (Browser-Rendering)</h3>
+          </div>
+          <span id="playwright-status" style="font-size:0.75rem;font-weight:600;"></span>
+        </div>
+        <div style="padding:1rem;">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem;">
+            <div>
+              <div style="font-size:0.7rem;color:var(--muted);margin-bottom:0.25rem;">Content-Länge</div>
+              <div style="font-size:1.1rem;font-weight:700;color:#dc2626;" id="playwright-length">-</div>
+            </div>
+            <div>
+              <div style="font-size:0.7rem;color:var(--muted);margin-bottom:0.25rem;">Dauer</div>
+              <div style="font-size:1.1rem;font-weight:700;color:#dc2626;" id="playwright-duration">-</div>
+            </div>
+            <div>
+              <div style="font-size:0.7rem;color:var(--muted);margin-bottom:0.25rem;">Sprache</div>
+              <div style="font-size:1.1rem;font-weight:700;color:#dc2626;" id="playwright-language">-</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:0.5rem;">📄 Titel</div>
+            <div style="font-family:var(--mono);font-size:0.8125rem;margin-bottom:1rem;color:var(--text);" id="playwright-title">-</div>
+          </div>
+          <div>
+            <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:0.5rem;">📝 Content (Vorschau)</div>
+            <pre style="font-family:var(--mono);font-size:0.75rem;line-height:1.6;color:var(--muted);white-space:pre-wrap;word-break:break-word;background:var(--bg);padding:0.75rem;border-radius:var(--r);max-height:300px;overflow-y:auto;" id="playwright-content">-</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recommendation -->
+      <div id="recommendation-box" style="background:#fef9c3;border:1px solid #fde68a;border-radius:var(--r);padding:1rem;">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+          <span style="font-size:1.2rem;">💡</span>
+          <h3 style="font-size:0.875rem;font-weight:600;color:#854d0e;">Empfehlung</h3>
+        </div>
+        <p style="font-size:0.8125rem;color:#854d0e;line-height:1.6;margin:0;" id="recommendation-text">-</p>
       </div>
     </div>
   </div>
@@ -924,7 +1046,8 @@ function crawlSelectedHotels() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       urls: urls,
-      useSitemap: true
+      useSitemap: true,
+      skipExistingUrls: document.getElementById('skip-existing-urls').checked
     })
   })
     .then(function(r) { return r.json(); })
@@ -978,7 +1101,16 @@ function pollCrawlStatus(jobId) {
             hideStatus();
             var successful = status.results.filter(function(r) { return r.success; }).length;
             var failed = status.results.filter(function(r) { return !r.success; }).length;
-            toast('Abgeschlossen: ' + successful + ' erfolgreich, ' + failed + ' fehlgeschlagen', 
+            
+            var statsMsg = '';
+            if (status.pagesAttempted > 0) {
+              statsMsg = ' | Statistik: ' + status.pagesSuccessful + ' erfolgreich, ' + 
+                         status.pagesSkipped + ' übersprungen, ' + 
+                         status.pagesLowContent + ' zu wenig Content, ' + 
+                         status.pagesError + ' Fehler';
+            }
+            
+            toast('Abgeschlossen: ' + successful + ' erfolgreich, ' + failed + ' fehlgeschlagen' + statsMsg, 
                   successful === status.results.length ? 'success' : 'error');
             loadCrawlData();
           }, 1500);
@@ -1005,6 +1137,15 @@ function pollCrawlStatus(jobId) {
           }
         }
         
+        // Detaillierte Statistiken anzeigen falls vorhanden
+        if (status.pagesAttempted > 0) {
+          var stats = ' | ✅ ' + (status.pagesSuccessful || 0) + 
+                      ' | ⏭️ ' + (status.pagesSkipped || 0) + 
+                      ' | ⚠️ ' + (status.pagesLowContent || 0) + 
+                      ' | ❌ ' + (status.pagesError || 0);
+          detail += stats;
+        }
+        
         updateStatus(message, detail, progress);
       }
     })
@@ -1012,6 +1153,84 @@ function pollCrawlStatus(jobId) {
       console.error('Status-Poll-Fehler:', e);
       // Bei Fehler weiter pollen (Job läuft vielleicht noch)
     });
+}
+
+// ===== CRAWLER TEST FUNCTIONS =====
+function runCrawlerTest() {
+  var url = document.getElementById('test-url').value.trim();
+  
+  if (!url) {
+    toast('Bitte gib eine URL ein', 'error');
+    return;
+  }
+  
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    toast('URL muss mit http:// oder https:// beginnen', 'error');
+    return;
+  }
+  
+  showStatus('Teste Crawler', 'WebCrawler wird gestartet...', url);
+  
+  var apiBase = window.location.protocol + '//' + window.location.host + '/api/admin';
+  
+  fetch(apiBase + '/test-crawler', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: url })
+  })
+    .then(function(r) { 
+      if (!r.ok) throw new Error('Test fehlgeschlagen');
+      return r.json(); 
+    })
+    .then(function(data) {
+      hideStatus();
+      displayTestResults(data);
+      toast('Crawler-Test abgeschlossen', 'success');
+    })
+    .catch(function(e) {
+      hideStatus();
+      toast('Crawler-Test fehlgeschlagen: ' + e.message, 'error');
+    });
+}
+
+function displayTestResults(data) {
+  var resultsDiv = document.getElementById('test-results');
+  resultsDiv.style.display = 'block';
+  
+  // WebCrawler Results
+  var web = data.webCrawler;
+  document.getElementById('web-status').textContent = web.success ? '✓ Erfolgreich' : '✗ Fehlgeschlagen';
+  document.getElementById('web-status').style.color = web.success ? '#059669' : '#dc2626';
+  document.getElementById('web-length').textContent = web.contentLength + ' Zeichen';
+  document.getElementById('web-length').style.color = web.contentLength < 50 ? '#dc2626' : '#059669';
+  document.getElementById('web-duration').textContent = web.durationMs + ' ms';
+  document.getElementById('web-language').textContent = web.language || 'N/A';
+  document.getElementById('web-title').textContent = web.title || 'N/A';
+  document.getElementById('web-content').textContent = web.content;
+  
+  // Playwright Results
+  var playwrightSection = document.getElementById('playwright-section');
+  
+  if (data.fallbackTriggered && data.playwrightFallback) {
+    playwrightSection.style.display = 'block';
+    
+    var pw = data.playwrightFallback;
+    document.getElementById('playwright-status').textContent = pw.success ? '✓ Erfolgreich' : '✗ Fehlgeschlagen';
+    document.getElementById('playwright-status').style.color = pw.success ? '#059669' : '#dc2626';
+    document.getElementById('playwright-length').textContent = pw.contentLength + ' Zeichen';
+    document.getElementById('playwright-duration').textContent = pw.durationMs + ' ms';
+    document.getElementById('playwright-language').textContent = pw.language || 'N/A';
+    document.getElementById('playwright-title').textContent = pw.title || 'N/A';
+    document.getElementById('playwright-content').textContent = pw.content;
+  } else {
+    playwrightSection.style.display = 'none';
+  }
+  
+  // Recommendation
+  document.getElementById('recommendation-text').textContent = data.recommendation || 'Keine Empfehlung verfügbar';
+  
+  // Scroll to results
+  resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 loadPrompts();

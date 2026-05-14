@@ -186,4 +186,21 @@ public class InMemoryVectorStore : IVectorStore
         }
         return Task.FromResult(0);
     }
+
+    public Task<HashSet<string>> GetExistingUrlsAsync(
+        string hotelId,
+        CancellationToken cancellationToken = default)
+    {
+        var urls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        
+        if (_storage.TryGetValue(hotelId, out var chunks))
+        {
+            foreach (var chunk in chunks.Where(c => c.IsActive))
+            {
+                urls.Add(chunk.SourceUrl);
+            }
+        }
+        
+        return Task.FromResult(urls);
+    }
 }

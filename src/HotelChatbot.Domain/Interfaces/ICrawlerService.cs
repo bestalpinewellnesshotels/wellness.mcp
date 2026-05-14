@@ -70,11 +70,13 @@ public interface ICrawlerService
     /// <param name="baseUrl">Basis-URL der Website</param>
     /// <param name="allowedDomains">Liste erlaubter Domains</param>
     /// <param name="onChunkCrawled">Callback-Funktion, die für jeden gecrawlten Chunk aufgerufen wird</param>
+    /// <param name="excludeUrls">Optionale Liste von URLs die übersprungen werden sollen</param>
     /// <param name="cancellationToken">Cancellation Token</param>
     /// <returns>Anzahl der gecrawlten Chunks</returns>
     Task<int> CrawlFromSitemapAsync(
         string baseUrl,
         List<string>? allowedDomains,
         Func<ContentChunk, Task> onChunkCrawled,
+        HashSet<string>? excludeUrls = null,
         CancellationToken cancellationToken = default);
 }

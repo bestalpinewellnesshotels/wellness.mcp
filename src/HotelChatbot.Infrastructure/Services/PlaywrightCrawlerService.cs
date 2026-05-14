@@ -85,8 +85,14 @@ public sealed class PlaywrightCrawlerService : IPlaywrightCrawlerService, IAsync
                     Timeout = 30_000
                 });
 
+                // Warte auf vollständiges Rendering (wichtig für SPAs)
+                await Task.Delay(2000, cancellationToken);
+                
                 await AutoScrollAsync(page);
                 await WaitForNetworkIdleAsync(page);
+
+                // Nochmal kurz warten nach Scroll
+                await Task.Delay(1000, cancellationToken);
 
                 var html = await page.ContentAsync();
                 return ExtractChunkFromHtml(html, url);
@@ -107,6 +113,7 @@ public sealed class PlaywrightCrawlerService : IPlaywrightCrawlerService, IAsync
         string baseUrl,
         List<string>? allowedDomains,
         Func<ContentChunk, Task> onChunkCrawled,
+        HashSet<string>? excludeUrls = null,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Starte Playwright Sitemap-Crawling für {BaseUrl}", baseUrl);
@@ -142,11 +149,25 @@ public sealed class PlaywrightCrawlerService : IPlaywrightCrawlerService, IAsync
 
         var uniqueUrls = urls.Distinct().Where(u => !IsResourceFile(u)).ToList();
         _logger.LogInformation("Crawle {Count} URLs aus Sitemap mit Playwright", uniqueUrls.Count);
+        
+        if (excludeUrls != null && excludeUrls.Count > 0)
+        {
+            _logger.LogInformation("📋 {Count} existierende URLs werden übersprungen", excludeUrls.Count);
+        }
 
         int crawledCount = 0;
+        int skippedCount = 0;
         foreach (var url in uniqueUrls)
         {
             if (cancellationToken.IsCancellationRequested) break;
+
+            // Überspringe bereits indexierte URLs
+            if (excludeUrls?.Contains(url) == true)
+            {
+                skippedCount++;
+                _logger.LogDebug("⏭️ URL übersprungen (bereits indexiert): {Url}", url);
+                continue;
+            }
 
             var chunk = await CrawlPageAsync(url, cancellationToken);
             if (chunk != null)
@@ -154,7 +175,7 @@ public sealed class PlaywrightCrawlerService : IPlaywrightCrawlerService, IAsync
                 crawledCount++;
                 _logger.LogInformation(
                     "Playwright gecrawlt: {Url} ({Count}/{Total})",
-                    url, crawledCount, uniqueUrls.Count);
+                    url, crawledCount, uniqueUrls.Count - skippedCount);
 
                 await onChunkCrawled(chunk);
             }
@@ -162,6 +183,9 @@ public sealed class PlaywrightCrawlerService : IPlaywrightCrawlerService, IAsync
             await Task.Delay(300, cancellationToken);
         }
 
+        _logger.LogInformation("Playwright Sitemap-Crawling abgeschlossen: {Crawled} gecrawlt, {Skipped} übersprungen von {Total} URLs",
+            crawledCount, skippedCount, uniqueUrls.Count);
+        
         return crawledCount;
     }
 
@@ -203,8 +227,14 @@ public sealed class PlaywrightCrawlerService : IPlaywrightCrawlerService, IAsync
                     Timeout = 30_000
                 });
 
+                // Warte auf vollständiges Rendering (wichtig für SPAs)
+                await Task.Delay(2000, cancellationToken);
+
                 await AutoScrollAsync(page);
                 await WaitForNetworkIdleAsync(page);
+
+                // Nochmal kurz warten nach Scroll
+                await Task.Delay(1000, cancellationToken);
 
                 html = await page.ContentAsync();
             }
@@ -321,7 +351,7 @@ public sealed class PlaywrightCrawlerService : IPlaywrightCrawlerService, IAsync
         };
     }
 
-    private static string ExtractContent(HtmlDocument doc)
+    private string ExtractContent(HtmlDocument doc)
     {
         var nodesToRemove = doc.DocumentNode.SelectNodes(
             "//script | //style | //nav | //header | //footer | //aside | //form | //iframe");
@@ -329,17 +359,32 @@ public sealed class PlaywrightCrawlerService : IPlaywrightCrawlerService, IAsync
         if (nodesToRemove != null)
             foreach (var node in nodesToRemove) node.Remove();
 
-        // Hauptcontent-Bereiche priorisieren (inkl. TYPO3-spezifische Klassen)
+        // Hauptcontent-Bereiche priorisieren (inkl. SPA-Frameworks wie Nuxt/Vue)
         var selectors = new[]
         {
+            // Standard semantic HTML
             "//main",
-            "//article",            "//*[@id='main']",
+            "//article",
+            "//*[@id='main']",
             "//*[@id='content']",
             "//div[@id='main']",
-            "//div[@id='content']",            "//div[contains(@class,'dce')]",
+            "//div[@id='content']",
+            
+            // SPA Frameworks (Vue, Nuxt, React, Next.js)
+            "//div[@id='__nuxt']",
+            "//div[@id='__layout']",
+            "//div[@id='app']",
+            "//div[@id='__next']",
+            "//div[@class='nuxt-content']",
+            "//div[@class='container']",
+            
+            // TYPO3-spezifische Klassen
+            "//div[contains(@class,'dce')]",
             "//div[contains(@class,'tx-')]",
             "//div[contains(@class,'content')]",
             "//div[contains(@class,'main')]",
+            
+            // Fallback
             "//body"
         };
 
@@ -347,7 +392,11 @@ public sealed class PlaywrightCrawlerService : IPlaywrightCrawlerService, IAsync
         foreach (var sel in selectors)
         {
             contentNode = doc.DocumentNode.SelectSingleNode(sel);
-            if (contentNode != null) break;
+            if (contentNode != null)
+            {
+                _logger.LogDebug("Content gefunden mit Selector: {Selector}", sel);
+                break;
+            }
         }
 
         if (contentNode == null) return string.Empty;

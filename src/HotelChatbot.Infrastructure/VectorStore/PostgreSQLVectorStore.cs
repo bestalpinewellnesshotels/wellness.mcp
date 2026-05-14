@@ -308,6 +308,33 @@ public class PostgreSQLVectorStore : IVectorStore
         return Convert.ToInt32(count ?? 0);
     }
 
+    public async Task<HashSet<string>> GetExistingUrlsAsync(
+        string hotelId,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync(cancellationToken);
+
+        var sql = "SELECT DISTINCT source_url FROM content_chunks WHERE hotel_id = $1 AND is_active = true;";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue(hotelId);
+
+        var urls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var url = reader.GetString(0);
+            urls.Add(url);
+        }
+
+        _logger.LogInformation("Gefunden: {Count} existierende URLs für Hotel {HotelId}", urls.Count, hotelId);
+        return urls;
+    }
+
     public async Task<bool> HealthCheckAsync(CancellationToken cancellationToken = default)
     {
         try

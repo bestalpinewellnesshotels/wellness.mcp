@@ -63,4 +63,11 @@ public interface IVectorStore
     Task<int> GetChunkCountAsync(
         string hotelId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gibt alle bereits indexierten Source-URLs für ein Hotel zurück.
+    /// </summary>
+    Task<HashSet<string>> GetExistingUrlsAsync(
+        string hotelId,
+        CancellationToken cancellationToken = default);
 }

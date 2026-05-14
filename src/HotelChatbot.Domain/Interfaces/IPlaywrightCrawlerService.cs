@@ -34,5 +34,6 @@ public interface IPlaywrightCrawlerService
         string baseUrl,
         List<string>? allowedDomains,
         Func<ContentChunk, Task> onChunkCrawled,
+        HashSet<string>? excludeUrls = null,
         CancellationToken cancellationToken = default);
 }
