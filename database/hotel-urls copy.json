@@ -1,0 +1,21 @@
+{
+  "urls": [
+    "https://www.stock.at/",
+    "https://www.post-lermoos.at/",
+    "https://www.nesslerhof.at/",
+    "https://www.alpbacherhof.at/",
+    "https://www.waldklause.at/",
+    "https://www.engel-tirol.com/",
+    "https://www.hochschober.com/",
+    "https://www.uebergossenealm.at/",
+    "https://www.alpenrose.at/",
+    "https://www.wartherhof.at/",
+    "https://www.krallerhof.at/",
+    "https://www.theresa.at/",
+    "https://www.gmachl.at/",
+    "https://www.alpenresort-schwarz.at/",
+    "https://seefeld.sacher.com/"
+  ],
+  "maxDepth": 2,
+  "maxPages": 50
+}

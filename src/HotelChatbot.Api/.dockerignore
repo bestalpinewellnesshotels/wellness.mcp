@@ -1,0 +1,15 @@
+**/.git
+**/.gitignore
+**/.vs
+**/.vscode
+**/bin
+**/obj
+**/.dockerignore
+**/Dockerfile*
+**/docker-compose*
+**/node_modules
+**/npm-debug.log
+**/README*.md
+**/LICENSE
+**/*.md
+**/appsettings.Development.json

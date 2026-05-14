@@ -1,0 +1,1020 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>System Prompts</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #f4f4f5;
+      --surface: #ffffff;
+      --border:  #e4e4e7;
+      --text:    #18181b;
+      --muted:   #71717a;
+      --faint:   #a1a1aa;
+      --mono:    ui-monospace, "Cascadia Code", "Fira Mono", monospace;
+      --r:       6px;
+      --agent-color: #2563eb;
+      --mcp-color:   #7c3aed;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: .9375rem;
+      line-height: 1.6;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 1.5rem;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky; top: 0; z-index: 100;
+    }
+    header h1 { font-size: .9375rem; font-weight: 600; }
+
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      padding: 0 1.5rem;
+    }
+    .tab-btn {
+      padding: .75rem 1.25rem;
+      font-size: .875rem;
+      font-weight: 500;
+      cursor: pointer;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+      margin-bottom: -1px;
+      display: flex;
+      align-items: center;
+      gap: .45rem;
+      transition: color .12s, border-color .12s;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--text); border-bottom-color: var(--tab-color, var(--text)); }
+    .tab-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tab-color, var(--text)); flex-shrink: 0; }
+
+    main { max-width: 1100px; margin: 2rem auto; padding: 0 1.5rem; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1.25rem;
+    }
+    .toolbar-desc { font-size: .8125rem; color: var(--muted); }
+    .toolbar-actions { display: flex; gap: .5rem; }
+
+    button {
+      border: none; cursor: pointer; border-radius: var(--r);
+      font-family: inherit; font-size: .8125rem; font-weight: 500;
+      padding: .45rem .9rem;
+      display: inline-flex; align-items: center; gap: .3rem;
+      transition: opacity .12s;
+    }
+    button:disabled { opacity: .35; cursor: not-allowed; }
+    .btn-primary { background: var(--text); color: #fff; }
+    .btn-primary:hover:not(:disabled) { opacity: .75; }
+    .btn-ghost { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover:not(:disabled) { color: var(--text); border-color: #a1a1aa; }
+    .btn-sm { padding: .3rem .65rem; font-size: .75rem; }
+
+    .prompt-list { display: flex; flex-direction: column; gap: .75rem; }
+
+    .prompt-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+    .prompt-card.inactive { opacity: .5; }
+
+    .card-head {
+      display: flex; align-items: center; gap: .75rem;
+      padding: .75rem 1rem;
+    }
+    .card-step {
+      width: 26px; height: 26px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .7rem; font-weight: 700; color: #fff;
+      background: var(--card-color, var(--text)); flex-shrink: 0;
+    }
+    .card-step.config {
+      background: none;
+      border: 2px solid var(--card-color, var(--border));
+      color: var(--card-color, var(--muted));
+      font-size: .6rem;
+    }
+    .card-info { flex: 1; min-width: 0; }
+    .card-name { font-size: .875rem; font-weight: 600; }
+    .card-key  { font-family: var(--mono); font-size: .68rem; color: var(--faint); margin-top: .1rem; }
+    .card-desc { font-size: .8rem; color: var(--muted); margin-top: .2rem; line-height: 1.5; }
+    .card-badges { display: flex; align-items: center; gap: .5rem; flex-shrink: 0; }
+    .badge { font-size: .65rem; font-weight: 600; padding: .1rem .4rem; border-radius: 3px; white-space: nowrap; }
+    .badge-active   { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+    .badge-inactive { background: var(--bg); color: var(--faint); border: 1px solid var(--border); }
+    .badge-output   { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+
+    .card-body { border-top: 1px solid var(--border); padding: .75rem 1rem; background: var(--bg); }
+    .card-preview {
+      font-family: var(--mono); font-size: .72rem; color: var(--muted);
+      white-space: pre-wrap; word-break: break-word; line-height: 1.55;
+      max-height: none; overflow: hidden; position: relative;
+    }
+    .card-preview::after {
+      content: ""; position: absolute; bottom: 0; left: 0; right: 0; height: 24px;
+    }
+    .card-preview.config-value { font-size: .95rem; font-weight: 700; color: var(--text); max-height: none; }
+    .card-preview.config-value::after { display: none; }
+
+    .card-foot {
+      border-top: 1px solid var(--border); padding: .5rem 1rem;
+      display: flex; align-items: center; justify-content: flex-end;
+      gap: .5rem; background: var(--surface);
+    }
+
+    .connector { display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: .8rem; padding: .05rem 0; }
+
+    .state-msg { padding: 3rem; text-align: center; color: var(--muted); font-size: .875rem; }
+
+    .modal-backdrop {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.3); z-index: 200; padding: 1.5rem; overflow-y: auto;
+    }
+    .modal-backdrop.open { display: flex; align-items: flex-start; justify-content: center; }
+    .modal {
+      background: var(--surface); border-radius: var(--r); border: 1px solid var(--border);
+      box-shadow: 0 8px 24px rgba(0,0,0,.1); width: 100%; max-width: 800px; margin: 2rem auto;
+    }
+    .modal-header {
+      padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+    }
+    .modal-header h2 { font-size: .9375rem; font-weight: 600; }
+    .modal-subkey { font-family: var(--mono); font-size: .7rem; color: var(--faint); margin-top: .2rem; }
+    .modal-close { background: none; border: none; font-size: 1.25rem; cursor: pointer; color: var(--faint); line-height: 1; padding: .1rem .3rem; border-radius: 4px; flex-shrink: 0; }
+    .modal-close:hover { color: var(--text); }
+    .modal-body { padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+    .modal-footer {
+      padding: .875rem 1.5rem; border-top: 1px solid var(--border);
+      display: flex; gap: .6rem; justify-content: flex-end;
+      background: var(--bg); border-radius: 0 0 var(--r) var(--r);
+    }
+
+    .info-box {
+      background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--r);
+      padding: .75rem 1rem; font-size: .8375rem; color: #1e40af; line-height: 1.65;
+    }
+
+    .form-row { display: grid; gap: 1rem; }
+    .form-row.cols-2 { grid-template-columns: 1fr 1fr; }
+    @media (max-width: 560px) { .form-row.cols-2 { grid-template-columns: 1fr; } }
+    .field { display: flex; flex-direction: column; gap: .3rem; }
+    .field label { font-size: .8125rem; font-weight: 500; }
+    .field input, .field textarea {
+      border: 1px solid var(--border); border-radius: var(--r);
+      padding: .5rem .75rem; font-size: .875rem; font-family: inherit;
+      color: var(--text); background: var(--surface); outline: none; transition: border-color .12s;
+    }
+    .field input:focus, .field textarea:focus { border-color: var(--text); }
+    .field input[readonly] { background: var(--bg); color: var(--muted); cursor: default; }
+    .field textarea { resize: vertical; min-height: 300px; font-family: var(--mono); font-size: .8rem; line-height: 1.6; }
+    .field textarea.short { min-height: 70px; }
+    .field .hint { font-size: .75rem; color: var(--faint); }
+    .section-label { font-size: .75rem; font-weight: 600; color: var(--muted); padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+
+    .toggle-row { display: flex; align-items: center; gap: .6rem; padding-top: .2rem; }
+    .toggle { position: relative; width: 40px; height: 22px; cursor: pointer; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; inset: 0; background: var(--border); border-radius: 999px; transition: background .2s; }
+    .toggle-slider::before { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: white; top: 3px; left: 3px; transition: transform .2s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+    .toggle input:checked + .toggle-slider { background: var(--text); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+    .en-collapse-btn {
+      display: flex; align-items: center; gap: .4rem;
+      background: none; border: none; padding: 0; cursor: pointer;
+      font-size: .75rem; font-weight: 600; color: var(--muted);
+      border-radius: 0; text-transform: uppercase; letter-spacing: .04em;
+    }
+    .en-collapse-btn:hover { color: var(--text); }
+    .en-collapse-btn .chevron { transition: transform .18s; display: inline-block; }
+    .en-collapse-btn.open .chevron { transform: rotate(90deg); }
+    .en-section { border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
+    .en-section-head { display: flex; align-items: center; justify-content: space-between; padding: .5rem .75rem; background: var(--bg); }
+    .en-section-body { display: none; padding: .6rem .75rem; background: #fffbeb; border-top: 1px solid var(--border); }
+    .en-section-body.open { display: block; }
+    .en-section-body textarea { background: #fffbeb; color: var(--muted); cursor: default; }
+    .en-badge { font-size: .65rem; font-weight: 700; padding: .1rem .4rem; border-radius: 3px; background: #fef9c3; color: #854d0e; border: 1px solid #fde68a; }
+    .translate-status { font-size: .75rem; color: var(--muted); min-height: 1.2em; }
+
+    #toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; display: flex; flex-direction: column; gap: .4rem; z-index: 999; pointer-events: none; }
+    .toast { padding: .6rem .95rem; border-radius: var(--r); font-size: .875rem; font-weight: 500; background: var(--surface); color: var(--text); border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,.08); animation: fadein .15s ease; pointer-events: all; }
+    .toast-success { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+    .toast-error   { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+    @keyframes fadein { from { transform: translateY(6px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    /* Status Overlay */
+    #status-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; align-items: center; justify-content: center; }
+    #status-overlay.active { display: flex; }
+    .status-box { background: var(--surface); border-radius: var(--r); padding: 2rem; min-width: 400px; max-width: 600px; box-shadow: 0 8px 24px rgba(0,0,0,.2); position: relative; }
+    .status-title { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; }
+    .status-message { font-size: 0.875rem; color: var(--muted); margin-bottom: 1.5rem; min-height: 1.5em; }
+    .progress-bar { width: 100%; height: 8px; background: var(--border); border-radius: 999px; overflow: hidden; margin-bottom: 0.75rem; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #059669, #10b981); transition: width 0.3s ease; border-radius: 999px; }
+    .progress-fill.indeterminate { width: 40%; animation: indeterminate 1.5s infinite ease-in-out; }
+    @keyframes indeterminate { 0%, 100% { transform: translateX(-100%); } 50% { transform: translateX(250%); } }
+    .status-detail { font-size: 0.75rem; color: var(--faint); font-family: var(--mono); }
+    .status-dismiss { margin-top: 1rem; text-align: center; }
+    .status-dismiss button { background: none; border: none; color: var(--muted); font-size: 0.75rem; cursor: pointer; text-decoration: underline; }
+    .status-dismiss button:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>System Prompts</h1>
+  <div style="display:flex;align-items:center;gap:1rem">
+    <span style="font-size:.72rem;color:var(--faint);font-family:ui-monospace,monospace" id="api-base-display"></span>
+    <button class="btn-ghost btn-sm" onclick="loadPrompts()">&#8635; Refresh</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" style="--tab-color:var(--agent-color)" onclick="switchTab('agent',this)">
+    <span class="tab-dot" style="background:var(--agent-color)"></span>
+    Backend Agent Prompts
+  </button>
+  <button class="tab-btn" style="--tab-color:var(--mcp-color)" onclick="switchTab('mcp',this)">
+    <span class="tab-dot" style="background:var(--mcp-color)"></span>
+    MCP Prompts
+  </button>
+  <button class="tab-btn" style="--tab-color:#059669" onclick="switchTab('crawl',this)">
+    <span class="tab-dot" style="background:#059669"></span>
+    Crawling
+  </button>
+</div>
+
+<main>
+
+  <div class="tab-panel active" id="tab-agent">
+    <div class="toolbar">
+      <span class="toolbar-desc">Pipeline executed for every request: Language &rarr; Ethics &rarr; Topic check &rarr; Search &rarr; Answer</span>
+      <div class="toolbar-actions">
+        <button class="btn-ghost btn-sm" onclick="downloadBackup()">&#8595; Backup</button>
+      </div>
+    </div>
+    <div id="agent-list" class="prompt-list"><div class="state-msg">Loading&hellip;</div></div>
+  </div>
+
+  <div class="tab-panel" id="tab-mcp">
+    <div class="toolbar">
+      <span class="toolbar-desc">Controls what ChatGPT / Claude sees when calling the BestWellness tool.</span>
+      <div class="toolbar-actions">
+        <button class="btn-ghost btn-sm" onclick="downloadBackup()">&#8595; Backup</button>
+      </div>
+    </div>
+    <div id="mcp-list" class="prompt-list"><div class="state-msg">Loading&hellip;</div></div>
+  </div>
+
+  <div class="tab-panel" id="tab-crawl">
+    <div class="toolbar">
+      <span class="toolbar-desc">Verwalte Hotels und analysiere Crawling-Probleme</span>
+      <div class="toolbar-actions">
+        <button class="btn-primary btn-sm" onclick="loadCrawlData()">&#8635; Aktualisieren</button>
+        <button class="btn-ghost btn-sm" onclick="crawlSelectedHotels()">🚀 Ausgewählte crawlen</button>
+      </div>
+    </div>
+    
+    <div style="margin-bottom:1.5rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1rem;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+        <h3 style="font-size:0.875rem;font-weight:600;">Hotel-Übersicht</h3>
+        <span id="crawl-summary" style="font-size:0.8rem;color:var(--muted);"></span>
+      </div>
+      
+      <div style="overflow-x:auto;">
+        <table id="crawl-table" style="width:100%;border-collapse:collapse;font-size:0.8125rem;">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border);">
+              <th style="padding:0.5rem 0.75rem;text-align:left;font-weight:600;"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)" title="Alle auswählen"></th>
+              <th style="padding:0.5rem 0.75rem;text-align:left;font-weight:600;">Status</th>
+              <th style="padding:0.5rem 0.75rem;text-align:left;font-weight:600;">Hotel</th>
+              <th style="padding:0.5rem 0.75rem;text-align:left;font-weight:600;">Domain</th>
+              <th style="padding:0.5rem 0.75rem;text-align:right;font-weight:600;">Gecrawlt</th>
+              <th style="padding:0.5rem 0.75rem;text-align:right;font-weight:600;">Sitemap</th>
+              <th style="padding:0.5rem 0.75rem;text-align:right;font-weight:600;">Coverage</th>
+              <th style="padding:0.5rem 0.75rem;text-align:center;font-weight:600;">Aktionen</th>
+            </tr>
+          </thead>
+          <tbody id="crawl-table-body">
+            <tr><td colspan="8" style="padding:2rem;text-align:center;color:var(--muted);">Lade Daten&hellip;</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="crawl-details" style="display:none;margin-top:1.5rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1rem;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+        <h3 style="font-size:0.875rem;font-weight:600;">Problem-Analyse: <span id="detail-hotel-name"></span></h3>
+        <button class="btn-ghost btn-sm" onclick="closeDetails()">✕ Schließen</button>
+      </div>
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+        <div>
+          <div style="font-size:0.75rem;color:var(--muted);margin-bottom:0.25rem;">Domain</div>
+          <div style="font-family:var(--mono);font-size:0.875rem;" id="detail-domain"></div>
+        </div>
+        <div>
+          <div style="font-size:0.75rem;color:var(--muted);margin-bottom:0.25rem;">Gecrawlte Chunks</div>
+          <div style="font-size:0.875rem;font-weight:600;" id="detail-chunks"></div>
+        </div>
+      </div>
+      
+      <div style="margin-bottom:1rem;">
+        <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:0.5rem;">🔍 DIAGNOSE</div>
+        <ul id="detail-diagnostics" style="list-style:none;padding:0;font-size:0.8125rem;line-height:1.8;"></ul>
+      </div>
+      
+      <div>
+        <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:0.5rem;">💡 EMPFEHLUNGEN</div>
+        <ul id="detail-recommendations" style="list-style:none;padding:0;font-size:0.8125rem;line-height:1.8;"></ul>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- Edit Modal -->
+<div class="modal-backdrop" id="edit-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2 id="modal-title">Edit Prompt</h2>
+        <div class="modal-subkey" id="modal-key-display"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div class="info-box" id="modal-info-box" style="display:none"></div>
+
+      <div class="section-label">Identity</div>
+      <div class="form-row cols-2">
+        <div class="field">
+          <label for="f-key">Key</label>
+          <input id="f-key" type="text" readonly />
+          <span class="hint">Fixed identifier used by the backend &mdash; never change</span>
+        </div>
+        <div class="field">
+          <label for="f-name">Display name</label>
+          <input id="f-name" type="text" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Status</label>
+        <div class="toggle-row">
+          <label class="toggle">
+            <input id="f-active" type="checkbox" checked />
+            <span class="toggle-slider"></span>
+          </label>
+          <span id="f-active-label" style="font-size:.85rem;color:#15803d;font-weight:600;">Active</span>
+        </div>
+        <span class="hint">Inactive &rarr; built-in code fallback is used</span>
+      </div>
+
+      <div class="section-label">Inhalt</div>
+
+      <!-- German (editable) -->
+      <div class="field">
+        <label for="f-content-de">Text auf Deutsch <span style="font-size:.7rem;color:var(--muted);font-weight:400;">(wird beim Speichern automatisch ins Englische übersetzt)</span></label>
+        <textarea id="f-content-de" spellcheck="true" lang="de" placeholder="Deutschen Prompt-Text eingeben…"></textarea>
+        <span class="hint" id="f-hint"></span>
+      </div>
+
+      <!-- English preview (collapsible, read-only) -->
+      <div class="en-section" id="en-section">
+        <div class="en-section-head">
+          <button type="button" class="en-collapse-btn" id="en-toggle-btn" onclick="toggleEnSection()">
+            <span class="chevron">&#9658;</span> Englische Version (LLM)
+          </button>
+          <span class="en-badge">Read-only &mdash; automatisch generiert</span>
+        </div>
+        <div class="en-section-body" id="en-section-body">
+          <textarea id="f-content-en" spellcheck="false" readonly style="min-height:200px;"></textarea>
+        </div>
+      </div>
+
+      <div class="translate-status" id="translate-status"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn-primary" id="modal-save-btn" onclick="savePrompt()">&#10003; Übersetzen &amp; Speichern</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<div id="status-overlay">
+  <div class="status-box">
+    <div class="status-title" id="status-title">Verarbeite...</div>
+    <div class="status-message" id="status-message">Ein Moment bitte...</div>
+    <div class="progress-bar">
+      <div class="progress-fill indeterminate" id="status-progress"></div>
+    </div>
+    <div class="status-detail" id="status-detail"></div>
+    <div class="status-dismiss">
+      <button onclick="hideStatus()" title="Schließt das Fenster - der Vorgang läuft im Hintergrund weiter">Im Hintergrund fortsetzen</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var API_BASE = window.location.protocol + '//' + window.location.host + '/api/admin/system-prompts';
+document.getElementById('api-base-display').textContent = API_BASE;
+
+function switchTab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('tab-' + id).classList.add('active');
+  btn.classList.add('active');
+  
+  // Load crawl data when switching to crawl tab
+  if (id === 'crawl') {
+    loadCrawlData();
+  }
+}
+
+var AGENT_PROMPTS = [
+  { key: 'pipeline.language_detect',    step: '1',   name: 'LanguageAgent',                        desc: 'Erkennt die Sprache der Benutzeranfrage. Gibt einen ISO-639-1 Code zurück (z.B. "de", "en").', output: 'ISO code',    hint: 'Nur den zweistelligen Sprachcode ausgeben. Kein weiterer Text.' },
+  { key: 'pipeline.ethical_check',      step: '2',   name: 'EthicalAgent',                         desc: 'Prüft, ob die Anfrage höflich und angemessen ist. Blockiert unhöfliche oder beleidigende Nachrichten.', output: 'OK / REJECT', hint: 'NUR "OK" oder "REJECT" ausgeben. Kein weiterer Text.' },
+  { key: 'pipeline.logical_check',      step: '3',   name: 'LogicAgent',                           desc: 'Prüft, ob die Anfrage Hotels, Wellness oder Urlaub betrifft. Off-Topic-Anfragen werden blockiert.', output: 'YES / NO', hint: 'NUR "YES" oder "NO" ausgeben. Kein weiterer Text.' },
+  { key: 'pipeline.translate_to_german',step: '4',   name: 'SearchAgent &mdash; Suche optimieren', desc: 'Übersetzt die Benutzeranfrage für die Vektordatenbank ins Deutsche. Bereits deutschen Text unverändert lassen.', output: 'Deutscher Text', hint: 'NUR den übersetzten (oder originalen) Text ausgeben. Keine Begrüßung, keine Erklärung.' },
+  { key: 'pipeline.relevance_check',    step: '4c',  name: 'RelevanceAgent &mdash; Kontextprüfung', desc: 'Prüft ob die Vektordatenbank-Ergebnisse die Benutzeranfrage inhaltlich beantworten. Bei NO wird der no_results-Pfad eingeschlagen.', output: 'YES / NO', hint: 'NUR "YES" oder "NO" ausgeben. Streng: Wenn das gesuchte Merkmal im Kontext nicht erwähnt wird → NO.' },
+  { key: 'pipeline.answer',             step: '5a',  name: 'AnswerAgent &mdash; Treffer gefunden', desc: 'Formuliert die finale Antwort, wenn passende Hotels gefunden wurden. Platzhalter {language} wird zur Laufzeit ersetzt.', output: 'Antworttext', hint: 'Platzhalter {language} wird durch den vollständigen Sprachnamen ersetzt, z.B. "German".' },
+  { key: 'pipeline.no_results',         step: '5b',  name: 'AnswerAgent &mdash; Keine Ergebnisse', desc: 'Formuliert eine freundliche Meldung, wenn keine passenden Hotels gefunden wurden. Platzhalter {language} wird zur Laufzeit ersetzt.', output: 'Antworttext', hint: 'Platzhalter {language} wird durch den vollständigen Sprachnamen ersetzt, z.B. "German".' },
+  { key: 'config.search.max_results',   step: 'CFG', name: 'Max. Suchergebnisse',                  desc: 'Maximale Anzahl Hotels, die die Vektordatenbank zurückliefert. Ganzzahl zwischen 1 und 20.', output: null, hint: 'Nur eine Ganzzahl (1–20). Kein Prompt — wird vom Backend als Zahl gelesen.', isConfig: true }
+];
+
+var MCP_PROMPTS = [
+  { key: 'mcp.get_response.description',        step: '1',  name: 'Tool-Beschreibung: get_response',        desc: 'Tool-Beschreibung, die ChatGPT / Claude vor jedem Aufruf liest. Definiert wann es aufgerufen wird und die strikten Ausgaberegeln.', output: 'Tool-Aufruf', hint: 'ChatGPT liest dies automatisch. Änderungen beeinflussen direkt das Custom GPT-Verhalten.' },
+  { key: 'mcp.get_hotel_details.description',   step: '2',  name: 'Tool-Beschreibung: get_hotel_details',   desc: 'Tool-Beschreibung für Hotel-Detailabfragen. Nur aufrufen, wenn eine Hotel-ID aus einem vorherigen get_response-Ergebnis bekannt ist.', output: 'Hoteldetails', hint: 'Nur aufrufen, wenn eine Hotel-ID aus einem vorherigen Suchergebnis verfügbar ist.' },
+  { key: 'mcp.result.instruction.ok',           step: '3a', name: 'Ergebnis-Anweisung: Treffer gefunden',   desc: 'Wird als _instruction-Feld jeder erfolgreichen API-Antwort beigefügt. Weist das LLM an, nur den exakten Antworttext auszugeben.', output: '_instruction', hint: 'Kurz und explizit halten. Das LLM darf nicht umformulieren oder etwas hinzufügen.' },
+  { key: 'mcp.result.instruction.no_match',     step: '3b', name: 'Ergebnis-Anweisung: Kein Treffer',       desc: 'Wird beigefügt, wenn keine Hotels gefunden wurden. Verhindert, dass das LLM Hoteldaten aus seinen Trainingsdaten erfindet.', output: '_instruction', hint: 'Kritische Sicherheitssperre. Muss dem LLM explizit verbieten, eigenes Hotelwissen zu verwenden.' }
+];
+
+var allPrompts = [];
+var editingKey = null;
+
+function apiFetch(path, opts) {
+  opts = opts || {};
+  return fetch(API_BASE + (path || ''), {
+    headers: Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {}),
+    method: opts.method || 'GET',
+    body: opts.body
+  }).then(function(r) {
+    if (!r.ok) return r.json().catch(function() { return {}; }).then(function(j) { throw new Error(j.message || ('HTTP ' + r.status)); });
+    if (r.status === 204) return null;
+    return r.json();
+  });
+}
+
+function loadPrompts() {
+  apiFetch('').then(function(data) {
+    allPrompts = data || [];
+    renderTab('agent', AGENT_PROMPTS);
+    renderTab('mcp',   MCP_PROMPTS);
+  }).catch(function(e) {
+    ['agent-list','mcp-list'].forEach(function(id) {
+      document.getElementById(id).innerHTML = '<div class="state-msg" style="color:#b91c1c">Ladefehler: ' + esc(e.message) + '</div>';
+    });
+  });
+}
+
+function findPrompt(key) {
+  for (var i = 0; i < allPrompts.length; i++) { if (allPrompts[i].key === key) return allPrompts[i]; }
+  return null;
+}
+
+function renderTab(tabId, defs) {
+  var color = tabId === 'agent' ? 'var(--agent-color)' : 'var(--mcp-color)';
+  var html = '';
+  defs.forEach(function(def, idx) {
+    var p = findPrompt(def.key);
+    var active  = p ? p.isActive : false;
+    // Show German text in preview (fall back to English if contentDe is empty)
+    var preview = p ? (p.contentDe || p.content) : '(nicht in Datenbank – eingebauter Fallback wird verwendet)';
+    html += '<div class="prompt-card' + (active ? '' : ' inactive') + '">';
+    html += '<div class="card-head">';
+    html += '<div class="card-step' + (def.isConfig ? ' config' : '') + '" style="--card-color:' + color + '">' + def.step + '</div>';
+    html += '<div class="card-info">';
+    html += '<div class="card-name">' + def.name + '</div>';
+    html += '<div class="card-key">' + def.key + '</div>';
+    html += '<div class="card-desc">' + def.desc + '</div>';
+    html += '</div>';
+    html += '<div class="card-badges">';
+    if (def.output) html += '<span class="badge badge-output">' + def.output + '</span>';
+    html += '<span class="badge ' + (active ? 'badge-active' : 'badge-inactive') + '">' + (active ? 'Aktiv' : 'Inaktiv') + '</span>';
+    html += '</div>';
+    html += '</div>';
+    html += '<div class="card-body"><div class="card-preview' + (def.isConfig ? ' config-value' : '') + '">' + esc(preview) + '</div></div>';
+    html += '<div class="card-foot"><button class="btn-ghost btn-sm" onclick="openEdit(\'' + def.key + '\')">Bearbeiten</button></div>';
+    html += '</div>';
+    if (idx < defs.length - 1) html += '<div class="connector">&#8595;</div>';
+  });
+  document.getElementById(tabId + '-list').innerHTML = html || '<div class="state-msg">Keine Einträge gefunden.</div>';
+}
+
+function findDef(key) {
+  for (var i = 0; i < AGENT_PROMPTS.length; i++) { if (AGENT_PROMPTS[i].key === key) return AGENT_PROMPTS[i]; }
+  for (var i = 0; i < MCP_PROMPTS.length;   i++) { if (MCP_PROMPTS[i].key   === key) return MCP_PROMPTS[i]; }
+  return null;
+}
+
+function toggleEnSection() {
+  var body = document.getElementById('en-section-body');
+  var btn  = document.getElementById('en-toggle-btn');
+  var open = body.classList.toggle('open');
+  btn.classList.toggle('open', open);
+}
+
+function openEdit(key) {
+  editingKey = key;
+  var def = findDef(key);
+  var p   = findPrompt(key);
+  document.getElementById('modal-title').textContent = def ? def.name.replace(/&mdash;/g,'\u2014').replace(/&amp;/g,'&') : key;
+  document.getElementById('modal-key-display').textContent = key;
+  document.getElementById('f-key').value        = key;
+  document.getElementById('f-name').value       = p ? p.name : (def ? def.name.replace(/<[^>]+>/g,'').replace(/&mdash;/g,'\u2014').replace(/&amp;/g,'&') : key);
+  document.getElementById('f-content-de').value = p ? (p.contentDe || '') : '';
+  document.getElementById('f-content-en').value = p ? (p.content   || '') : '';
+  var isActive = p ? p.isActive : true;
+  document.getElementById('f-active').checked = isActive;
+  updateActiveLabel(isActive);
+  document.getElementById('f-hint').innerHTML = def && def.hint ? def.hint : '';
+  document.getElementById('translate-status').textContent = '';
+  
+  // Store original description and content for comparison
+  if (p) {
+    document.getElementById('f-key').dataset.originalDescription = p.description || '';
+    document.getElementById('f-key').dataset.originalContent = p.content || '';
+  } else {
+    document.getElementById('f-key').dataset.originalDescription = '';
+    document.getElementById('f-key').dataset.originalContent = '';
+  }
+
+  // Close English section by default
+  document.getElementById('en-section-body').classList.remove('open');
+  document.getElementById('en-toggle-btn').classList.remove('open');
+
+  var infoBox = document.getElementById('modal-info-box');
+  var taDe = document.getElementById('f-content-de');
+  var enSection = document.getElementById('en-section');
+  if (def && def.isConfig) {
+    infoBox.textContent = 'Konfigurationswert \u2014 kein LLM-Prompt. Bitte eine Ganzzahl eingeben (1\u201320).';
+    infoBox.style.display = 'block';
+    taDe.classList.add('short');
+    enSection.style.display = 'none';
+    document.getElementById('modal-save-btn').textContent = '\u2713 Speichern';
+  } else {
+    infoBox.style.display = 'none';
+    taDe.classList.remove('short');
+    enSection.style.display = '';
+    document.getElementById('modal-save-btn').innerHTML = '\u2713 \u00dcbersetzen &amp; Speichern';
+  }
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function updateActiveLabel(checked) {
+  var lbl = document.getElementById('f-active-label');
+  lbl.textContent = checked ? 'Aktiv' : 'Inaktiv';
+  lbl.style.color = checked ? '#15803d' : 'var(--faint)';
+}
+
+document.getElementById('f-active').addEventListener('change', function() { updateActiveLabel(this.checked); });
+
+function closeModal() {
+  document.getElementById('edit-modal').classList.remove('open');
+  editingKey = null;
+}
+
+function savePrompt() {
+  var key       = document.getElementById('f-key').value.trim();
+  var name      = document.getElementById('f-name').value.trim();
+  var contentDe = document.getElementById('f-content-de').value;
+  var active    = document.getElementById('f-active').checked;
+  var def       = findDef(key);
+  var existing  = findPrompt(key);
+
+  if (!contentDe.trim()) { toast('Inhalt darf nicht leer sein.', 'error'); return; }
+
+  var btn = document.getElementById('modal-save-btn');
+  btn.disabled = true;
+
+  // Config values (plain integers): no translation needed
+  if (def && def.isConfig) {
+    doSave(key, name, contentDe, contentDe, active, existing);
+    return;
+  }
+
+  // Step 1: translate German → English
+  var statusEl = document.getElementById('translate-status');
+  statusEl.textContent = '⏳ Wird übersetzt…';
+
+  console.log('[Translation] Input (DE):', contentDe.substring(0, 100) + (contentDe.length > 100 ? '...' : ''));
+
+  apiFetch('/translate', { method: 'POST', body: JSON.stringify({ text: contentDe }) })
+    .then(function(res) {
+      console.log('[Translation] Response:', res);
+      
+      if (!res || !res.translation) {
+        throw new Error('Übersetzung gab keine gültige Antwort zurück.');
+      }
+      
+      var contentEn = res.translation.trim();
+      
+      console.log('[Translation] Output (EN):', contentEn.substring(0, 100) + (contentEn.length > 100 ? '...' : ''));
+      
+      // Safety check: If translation is empty or exactly the same as input (identical), warn but continue
+      if (!contentEn) {
+        throw new Error('Übersetzung ist leer.');
+      }
+      
+      // Show translated content
+      document.getElementById('f-content-en').value = contentEn;
+      
+      // Open English preview so user can see result
+      document.getElementById('en-section-body').classList.add('open');
+      document.getElementById('en-toggle-btn').classList.add('open');
+      statusEl.textContent = '✓ Übersetzung abgeschlossen – wird gespeichert…';
+      doSave(key, name, contentEn, contentDe, active, existing);
+    })
+    .catch(function(e) {
+      console.error('[Translation] Error:', e);
+      statusEl.textContent = '';
+      toast('Übersetzung fehlgeschlagen: ' + e.message, 'error');
+      btn.disabled = false;
+    });
+}
+
+function doSave(key, name, contentEn, contentDe, active, existing) {
+  var btn = document.getElementById('modal-save-btn');
+  var language = existing ? existing.language : null;
+  var description = document.getElementById('f-key').dataset.originalDescription || '';
+  var payload = { key: key, name: name, description: description, content: contentEn, contentDe: contentDe, isActive: active, language: language };
+
+  console.log('[Save] Payload:', {
+    key: key,
+    name: name,
+    description: description.substring(0, 50) + (description.length > 50 ? '...' : ''),
+    contentEn: contentEn.substring(0, 50) + (contentEn.length > 50 ? '...' : ''),
+    contentDe: contentDe.substring(0, 50) + (contentDe.length > 50 ? '...' : ''),
+    isActive: active,
+    language: language
+  });
+
+  var req = existing
+    ? apiFetch('/' + encodeURIComponent(key), { method: 'PUT',  body: JSON.stringify(payload) })
+    : apiFetch('',                             { method: 'POST', body: JSON.stringify(payload) });
+
+  req.then(function() {
+    console.log('[Save] Success');
+    toast('Gespeichert.', 'success');
+    closeModal();
+    loadPrompts();
+  }).catch(function(e) {
+    console.error('[Save] Error:', e);
+    document.getElementById('translate-status').textContent = '';
+    toast('Speichern fehlgeschlagen: ' + e.message, 'error');
+    btn.disabled = false;
+  });
+}
+
+function downloadBackup() {
+  var json = JSON.stringify(allPrompts, null, 2);
+  var a = document.createElement('a');
+  a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+  a.download = 'system-prompts-backup-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+}
+
+function toast(msg, type) {
+  var el = document.createElement('div');
+  el.className = 'toast' + (type ? ' toast-' + type : '');
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(function() { el.remove(); }, 3500);
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
+
+// ===== STATUS OVERLAY FUNCTIONS =====
+function showStatus(title, message, detail) {
+  document.getElementById('status-title').textContent = title || 'Verarbeite...';
+  document.getElementById('status-message').textContent = message || 'Ein Moment bitte...';
+  document.getElementById('status-detail').textContent = detail || '';
+  document.getElementById('status-progress').classList.add('indeterminate');
+  document.getElementById('status-progress').style.width = '';
+  document.getElementById('status-overlay').classList.add('active');
+}
+
+function updateStatus(message, detail, progress) {
+  if (message) document.getElementById('status-message').textContent = message;
+  if (detail) document.getElementById('status-detail').textContent = detail;
+  if (typeof progress === 'number') {
+    var bar = document.getElementById('status-progress');
+    bar.classList.remove('indeterminate');
+    bar.style.width = Math.min(100, Math.max(0, progress)) + '%';
+  }
+}
+
+function hideStatus() {
+  document.getElementById('status-overlay').classList.remove('active');
+}
+
+// ===== CRAWLING TAB FUNCTIONS =====
+var crawlData = [];
+var selectedHotels = new Set();
+var currentJobId = null;
+var statusPollInterval = null;
+
+function loadCrawlData() {
+  var crawlApiBase = window.location.protocol + '//' + window.location.host + '/api/admin/crawl';
+  
+  showStatus('Lade Hotel-Daten', 'Analysiere Crawling-Status aller Hotels...', 'Dies kann einige Sekunden dauern');
+  
+  fetch(crawlApiBase + '/hotels-analysis')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      crawlData = data.analysis || [];
+      renderCrawlTable();
+      
+      var good = crawlData.filter(function(h) { return h.status === 'good'; }).length;
+      var warning = crawlData.filter(function(h) { return h.status === 'warning'; }).length;
+      var problematic = crawlData.filter(function(h) { return h.status === 'problematic'; }).length;
+      var notCrawled = crawlData.filter(function(h) { return h.status === 'not_crawled'; }).length;
+      
+      document.getElementById('crawl-summary').textContent = 
+        data.totalHotels + ' Hotels: ' + good + ' gut, ' + warning + ' warning, ' + 
+        problematic + ' problematisch, ' + notCrawled + ' nicht gecrawlt';
+      
+      hideStatus();
+    })
+    .catch(function(e) {
+      document.getElementById('crawl-table-body').innerHTML = 
+        '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#b91c1c;">Fehler: ' + esc(e.message) + '</td></tr>';
+      hideStatus();
+      toast('Fehler beim Laden: ' + e.message, 'error');
+    });
+}
+
+function renderCrawlTable() {
+  var tbody = document.getElementById('crawl-table-body');
+  
+  if (crawlData.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:var(--muted);">Keine Hotels gefunden</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = crawlData.map(function(h) {
+    var statusColor = {
+      'good': '#059669',
+      'warning': '#d97706',
+      'problematic': '#dc2626',
+      'not_crawled': '#71717a',
+      'error': '#b91c1c'
+    }[h.status] || '#71717a';
+    
+    var statusLabel = {
+      'good': '✓',
+      'warning': '⚠',
+      'problematic': '✗',
+      'not_crawled': '○',
+      'error': '⚠'
+    }[h.status] || '?';
+    
+    var isChecked = selectedHotels.has(h.hotelId) ? 'checked' : '';
+    
+    return '<tr style="border-bottom:1px solid var(--border);">' +
+      '<td style="padding:0.5rem 0.75rem;"><input type="checkbox" class="hotel-checkbox" data-hotel-id="' + h.hotelId + '" ' + isChecked + ' onchange="toggleHotelSelect(this)"></td>' +
+      '<td style="padding:0.5rem 0.75rem;"><span style="font-size:1.2rem;color:' + statusColor + ';" title="' + h.status + '">' + statusLabel + '</span></td>' +
+      '<td style="padding:0.5rem 0.75rem;font-weight:500;">' + esc(h.name) + '</td>' +
+      '<td style="padding:0.5rem 0.75rem;font-family:var(--mono);font-size:0.75rem;color:var(--muted);">' + esc(h.domain) + '</td>' +
+      '<td style="padding:0.5rem 0.75rem;text-align:right;font-weight:600;' + (h.chunks < 10 ? 'color:#dc2626;' : '') + '">' + h.chunks + '</td>' +
+      '<td style="padding:0.5rem 0.75rem;text-align:right;color:var(--muted);">' + (h.sitemapUrls || '-') + '</td>' +
+      '<td style="padding:0.5rem 0.75rem;text-align:right;color:var(--muted);">' + (h.coverage || '-') + '</td>' +
+      '<td style="padding:0.5rem 0.75rem;text-align:center;">' +
+        '<button class="btn-ghost btn-sm" onclick="analyzeHotel(\'' + h.hotelId + '\')" style="padding:0.2rem 0.5rem;font-size:0.7rem;">🔬 Analyse</button>' +
+      '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function toggleSelectAll(checkbox) {
+  var checkboxes = document.querySelectorAll('.hotel-checkbox');
+  checkboxes.forEach(function(cb) {
+    cb.checked = checkbox.checked;
+    var hotelId = cb.getAttribute('data-hotel-id');
+    if (checkbox.checked) {
+      selectedHotels.add(hotelId);
+    } else {
+      selectedHotels.delete(hotelId);
+    }
+  });
+}
+
+function toggleHotelSelect(checkbox) {
+  var hotelId = checkbox.getAttribute('data-hotel-id');
+  if (checkbox.checked) {
+    selectedHotels.add(hotelId);
+  } else {
+    selectedHotels.delete(hotelId);
+  }
+  
+  // Update "select all" checkbox state
+  var allCheckboxes = document.querySelectorAll('.hotel-checkbox');
+  var allChecked = Array.from(allCheckboxes).every(function(cb) { return cb.checked; });
+  document.getElementById('select-all').checked = allChecked;
+}
+
+function analyzeHotel(hotelId) {
+  var hotel = crawlData.find(function(h) { return h.hotelId === hotelId; });
+  if (!hotel) return;
+  
+  document.getElementById('detail-hotel-name').textContent = hotel.name;
+  document.getElementById('detail-domain').textContent = hotel.domain;
+  document.getElementById('detail-chunks').textContent = hotel.chunks;
+  
+  // Show loading state
+  document.getElementById('detail-diagnostics').innerHTML = '<li style="color:var(--muted);">Analysiere&hellip;</li>';
+  document.getElementById('detail-recommendations').innerHTML = '';
+  document.getElementById('crawl-details').style.display = 'block';
+  
+  var crawlApiBase = window.location.protocol + '//' + window.location.host + '/api/admin/crawl';
+  
+  fetch(crawlApiBase + '/analyze-problems', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hotelId: hotelId })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var diagHtml = (data.diagnostics || []).map(function(d) {
+        return '<li style="padding:0.25rem 0;">' + esc(d) + '</li>';
+      }).join('');
+      
+      var recHtml = (data.recommendations || []).map(function(r) {
+        return '<li style="padding:0.25rem 0;color:#d97706;font-weight:500;">' + esc(r) + '</li>';
+      }).join('');
+      
+      document.getElementById('detail-diagnostics').innerHTML = diagHtml || '<li style="color:var(--muted);">Keine Diagnose verfügbar</li>';
+      document.getElementById('detail-recommendations').innerHTML = recHtml || '<li style="color:var(--muted);">Keine Empfehlungen</li>';
+    })
+    .catch(function(e) {
+      document.getElementById('detail-diagnostics').innerHTML = '<li style="color:#b91c1c;">Fehler: ' + esc(e.message) + '</li>';
+    });
+}
+
+function closeDetails() {
+  document.getElementById('crawl-details').style.display = 'none';
+}
+
+function crawlSelectedHotels() {
+  if (selectedHotels.size === 0) {
+    toast('Bitte wähle mindestens ein Hotel aus', 'error');
+    return;
+  }
+  
+  var urls = Array.from(selectedHotels).map(function(hotelId) {
+    var hotel = crawlData.find(function(h) { return h.hotelId === hotelId; });
+    return hotel ? 'https://' + hotel.domain : null;
+  }).filter(function(u) { return u !== null; });
+  
+  if (!confirm('Crawle ' + urls.length + ' Hotel(s)?\n\n' + urls.join('\n') + '\n\nDies kann mehrere Minuten dauern.')) {
+    return;
+  }
+  
+  showStatus(
+    'Crawle ' + urls.length + ' Hotel(s)',
+    'Initialisiere Crawl-Job...',
+    ''
+  );
+  
+  var apiBase = window.location.protocol + '//' + window.location.host + '/api/admin';
+  
+  fetch(apiBase + '/crawl-multiple-hotels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      urls: urls,
+      useSitemap: true
+    })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.jobId) {
+        // Neues Job-basiertes System
+        currentJobId = data.jobId;
+        updateStatus('Crawling gestartet...', 'Job-ID: ' + data.jobId, 0);
+        
+        // Poll Status alle 2 Sekunden
+        statusPollInterval = setInterval(function() {
+          pollCrawlStatus(data.jobId);
+        }, 2000);
+      } else {
+        // Altes System (Fallback)
+        updateStatus('Crawling abgeschlossen!', data.results.length + ' Hotels verarbeitet', 100);
+        
+        setTimeout(function() {
+          hideStatus();
+          var successful = data.results.filter(function(r) { return r.success; }).length;
+          toast('Abgeschlossen: ' + successful + ' erfolgreich', 'success');
+          loadCrawlData();
+        }, 1500);
+      }
+    })
+    .catch(function(e) {
+      hideStatus();
+      toast('Crawling-Fehler: ' + e.message, 'error');
+    });
+}
+
+function pollCrawlStatus(jobId) {
+  var apiBase = window.location.protocol + '//' + window.location.host + '/api/admin';
+  
+  fetch(apiBase + '/crawl/status/' + jobId)
+    .then(function(r) { 
+      if (!r.ok) throw new Error('Status nicht verfügbar');
+      return r.json(); 
+    })
+    .then(function(status) {
+      if (status.status === 'completed' || status.status === 'failed') {
+        // Crawling abgeschlossen
+        clearInterval(statusPollInterval);
+        statusPollInterval = null;
+        currentJobId = null;
+        
+        if (status.status === 'completed') {
+          updateStatus('Crawling abgeschlossen!', status.results.length + ' Hotels verarbeitet', 100);
+          
+          setTimeout(function() {
+            hideStatus();
+            var successful = status.results.filter(function(r) { return r.success; }).length;
+            var failed = status.results.filter(function(r) { return !r.success; }).length;
+            toast('Abgeschlossen: ' + successful + ' erfolgreich, ' + failed + ' fehlgeschlagen', 
+                  successful === status.results.length ? 'success' : 'error');
+            loadCrawlData();
+          }, 1500);
+        } else {
+          hideStatus();
+          toast('Crawling fehlgeschlagen', 'error');
+        }
+      } else {
+        // Crawling läuft noch
+        var progress = status.totalHotels > 0 
+          ? Math.floor((status.processedHotels / status.totalHotels) * 100)
+          : 0;
+        
+        var message = 'Hotel ' + (status.processedHotels + 1) + '/' + status.totalHotels;
+        if (status.currentHotel) {
+          message += ': ' + status.currentHotel;
+        }
+        
+        var detail = '';
+        if (status.currentHotelPages > 0) {
+          detail = 'Seite ' + status.currentHotelPages;
+          if (status.currentHotelTotalPages > 0) {
+            detail += '/' + status.currentHotelTotalPages;
+          }
+        }
+        
+        updateStatus(message, detail, progress);
+      }
+    })
+    .catch(function(e) {
+      console.error('Status-Poll-Fehler:', e);
+      // Bei Fehler weiter pollen (Job läuft vielleicht noch)
+    });
+}
+
+loadPrompts();
+</script>
+</body>
+</html>

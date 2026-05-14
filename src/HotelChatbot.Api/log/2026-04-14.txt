@@ -1,0 +1,17 @@
+﻿══════════════════════════════════════════════════════════════════════
+[2026-04-14 17:22:40]  ANFRAGE OK
+  Query    : Ich suche Hotels in Tirol
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+

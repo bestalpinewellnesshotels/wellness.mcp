@@ -1,0 +1,425 @@
+﻿══════════════════════════════════════════════════════════════════════
+[2026-03-29 18:33:42]  ANFRAGE OK
+  Query    : In welchem Hotel sind Hunde erlaubt?
+  Language : en
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 18:33:57]  ANFRAGE OK
+  Query    : In welchem Hotel sind Hunde erlaubt?
+  Language : en
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 18:34:42]  ANFRAGE OK
+  Query    : In welchem Hotel sind Hunde erlaubt?
+  Language : en
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 18:36:59]  ANFRAGE OK
+  Query    : In welchem Hotel sind Hunde erlaubt?
+  Language : en
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 18:42:16]  ANFRAGE OK
+  Query    : In welchem Hotel sind Hunde erlaubt?
+  Language : en
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 18:47:09]  ANFRAGE OK
+  Query    : In welchem Hotel sind Hunde erlaubt?
+  Language : en
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 18:51:50]  ANFRAGE OK
+  Query    : Sind Hunde in irgendeinem Hotel erlaubt?
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 18:53:15]  ANFRAGE OK
+  Query    : Wo sind Hunde erlaubt?
+  Language : en
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 18:56:55]  ANFRAGE OK
+  Query    : Hunde erlaubt
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 18:58:17]  ANFRAGE OK
+  Query    : In welchen Hotels sind Hunde erlaubt?
+  Language : en
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 19:00:36]  ANFRAGE OK
+  Query    : in welchem Hotel sind Hunde erlaubt?
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 19:00:53]  ANFRAGE OK
+  Query    : in welchem Hotel sind Hunde erlaubt?
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 19:05:21]  ANFRAGE OK
+  Query    : In welchem hotel sind Hunde erlaubt?
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 19:08:28]  ANFRAGE OK
+  Query    : Welches Hotel erlaubt Hunde?
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 19:09:43]  ANFRAGE OK
+  Query    : In welchem Hotel sind Hunde erlaubt?
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 19:14:09]  ANFRAGE OK
+  Query    : Hotels mit Pool
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 19:14:37]  ANFRAGE OK
+  Query    : Und welche haben einen Innenpool?
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 19:14:57]  ANFRAGE OK
+  Query    : Welche Davon sind in Tirol?
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 19:15:56]  ANFRAGE OK
+  Query    : Und welche sind Ausserhalb Tirols?
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 19:16:28]  ANFRAGE OK
+  Query    : Welche Hotels kennst du denn ueberhaupt?
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 19:16:40]  ANFRAGE OK
+  Query    : Ich moechte Hotels in Salzburg
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 19:17:05]  ANFRAGE OK
+  Query    : Warum kannst du mir keine Liste aller verfuegbaren Hotels in Deiner Datenbank nennen?
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 19:28:34]  ANFRAGE OK
+  Query    : Hotels mit Reitangeboten
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 19:28:56]  ANFRAGE OK
+  Query    : Ich habe auch nicht nach diesem Hotel gefragt. Suche nach allen Hotels, die Reitangebote haben
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-03-29 20:04:57]  ANFRAGE OK
+  Query    : Ich moechte reiten
+  Language : de
+  Prompt   : pipeline.logical_check
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ You are a topic relevance classifier for a wellness hotel search assistant.
+  │ Determine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.
+  │ Be inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.
+  │ Reply ONLY with "YES" if the message could relate to the above topics.
+  │ Reply ONLY with "NO" if the message has no conceivable connection to hotels or vacation.
+  │ No other text. No explanation. Just: YES or NO.
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+

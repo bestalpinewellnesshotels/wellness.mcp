@@ -1,0 +1,197 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BestWellness Chatbot - Demo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f4f4f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .chat-window {
+      width: 100%;
+      max-width: 720px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.10);
+      display: flex;
+      flex-direction: column;
+      height: 85vh;
+      max-height: 820px;
+      overflow: hidden;
+    }
+    .chat-header {
+      padding: 1rem 1.25rem;
+      background: #1e40af;
+      color: #fff;
+      font-weight: 600;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .chat-header span { opacity: .7; font-weight: 400; font-size: .8rem; margin-left: .5rem; }
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: .75rem;
+    }
+    .msg { display: flex; flex-direction: column; max-width: 85%; }
+    .msg.user { align-self: flex-end; align-items: flex-end; }
+    .msg.bot  { align-self: flex-start; align-items: flex-start; }
+    .msg-bubble {
+      padding: .65rem .9rem;
+      border-radius: 12px;
+      font-size: .9rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .msg.user .msg-bubble { background: #1e40af; color: #fff; border-bottom-right-radius: 3px; }
+    .msg.bot  .msg-bubble { background: #f1f5f9; color: #1e293b; border-bottom-left-radius: 3px; }
+    .msg.error .msg-bubble { background: #fef2f2; color: #b91c1c; }
+    .msg-time { font-size: .7rem; color: #94a3b8; margin-top: .25rem; }
+    .typing .msg-bubble { color: #94a3b8; font-style: italic; }
+    .input-row {
+      display: flex;
+      gap: .5rem;
+      padding: .875rem 1.25rem;
+      border-top: 1px solid #e2e8f0;
+      flex-shrink: 0;
+      background: #fff;
+    }
+    #userInput {
+      flex: 1;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: .6rem .875rem;
+      font-size: .9rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .15s;
+    }
+    #userInput:focus { border-color: #1e40af; }
+    #sendBtn {
+      background: #1e40af;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: .6rem 1.25rem;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+      white-space: nowrap;
+    }
+    #sendBtn:disabled { opacity: .4; cursor: not-allowed; }
+    #sendBtn:not(:disabled):hover { opacity: .85; }
+  </style>
+</head>
+<body>
+<div class="chat-window">
+  <div class="chat-header">
+    BestWellness Chatbot
+    <span>Hotel- &amp; Wellness-Assistent</span>
+  </div>
+  <div class="messages" id="messages">
+    <!-- initial greeting added by JS -->
+  </div>
+  <div class="input-row">
+    <input id="userInput" type="text" placeholder="Ihre Frage, z. B. Hotels mit Pool in Tirol…" autocomplete="off" />
+    <button id="sendBtn" type="button">Senden</button>
+  </div>
+</div>
+
+<script>
+// API-URL automatisch erkennen:
+// - Lokal (webpack dev server auf 8080): nutze localhost:5000
+// - Production (von API serviert): nutze relative URL
+var API;
+if (window.location.port === '8080') {
+  // Lokale Entwicklung: webpack dev server
+  API = 'http://localhost:5000/api/chat/recommend';
+} else {
+  // Production: API auf gleichem Host/Port
+  API = window.location.origin + '/api/chat/recommend';
+}
+
+var sessionId = null;
+
+function now() {
+  return new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
+function addMessage(role, text) {
+  var msgs = document.getElementById('messages');
+  var div = document.createElement('div');
+  div.className = 'msg ' + role;
+  var bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  bubble.textContent = text;
+  var time = document.createElement('div');
+  time.className = 'msg-time';
+  time.textContent = now();
+  div.appendChild(bubble);
+  div.appendChild(time);
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}
+
+function removeTyping(el) {
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+}
+
+addMessage('bot', 'Hallo! Wie kann ich Ihnen helfen? Stellen Sie mir eine Frage zu Wellness-Hotels.');
+
+var input = document.getElementById('userInput');
+var btn   = document.getElementById('sendBtn');
+
+async function send() {
+  var text = input.value.trim();
+  if (!text || btn.disabled) return;
+  input.value = '';
+  btn.disabled = true;
+
+  addMessage('user', text);
+  var typing = addMessage('bot typing', 'Antwort wird geladen\u2026');
+
+  try {
+    var res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requirements: text, sessionId: sessionId, language: null })
+    });
+    var data = await res.json();
+    removeTyping(typing);
+    if (data.sessionId) sessionId = data.sessionId;
+    if (data.finalAnswer) {
+      addMessage('bot', data.finalAnswer);
+    } else {
+      addMessage('error', data.errorMessage || 'Keine Antwort erhalten.');
+    }
+  } catch (e) {
+    removeTyping(typing);
+    addMessage('error', 'Verbindungsfehler: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    input.focus();
+  }
+}
+
+btn.addEventListener('click', send);
+input.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+input.focus();
+</script>
+</body>
+</html>

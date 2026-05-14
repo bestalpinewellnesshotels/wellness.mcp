@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # ASP.NET Core API
+  api:
+    build:
+      context: ./src
+      dockerfile: HotelChatbot.Api/Dockerfile
+    container_name: hotelchatbot-api
+    ports:
+      - "5001:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      # PostgreSQL Connection (externe Datenbank)
+      - ConnectionStrings__PostgreSQL=Host=dev-universe.net;Port=5432;Database=Bwchat;Username=bwchatuser;Password=0#PLsqi59Lsytj*j;SSL Mode=Prefer;Trust Server Certificate=true
+      # Azure OpenAI Configuration
+      - OpenAI__Endpoint=https://codeaustriaazureopenai.openai.azure.com/
+      - OpenAI__ApiKey=2UC511uZOtL2vXuRlL9E2UVyl0a3Lr0atQIrYIg30igllrnOoqb1JQQJ99CAACPV0roXJ3w3AAABACOGyOrD
+      - OpenAI__DeploymentName=gpt-4.1-mini
+      - OpenAI__EmbeddingDeploymentName=text-embedding-3-small
+      - OpenAI__EmbeddingDimensions=1536
+      # Azure Speech Service
+      - SpeechService__SubscriptionKey=2b75e8a82f324bfcb14db13631e247b6
+      - SpeechService__ServiceRegion=germanywestcentral
+      # ElevenLabs TTS
+      - ElevenLabs__ApiKey=sk_651f9ec6eced052a3267cab0712cfdc704982ddd39ab36ff
+      - ElevenLabs__VoiceId=AegZIKlFnsDvogah9TeB
+      - ElevenLabs__BaseUrl=https://api.elevenlabs.io/v1/text-to-speech/
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/chat/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - chatbot-network
+
+  # Node.js MCP Server für ChatGPT
+  mcp:
+    image: node:20-alpine
+    container_name: hotelchatbot-mcp
+    working_dir: /app
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - API_BASE_URL=http://api:8080
+      - NODE_ENV=production
+    volumes:
+      - ./chatgpt:/app:ro
+    command: sh -c "npm install --production && node index.js"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - chatbot-network
+
+networks:
+  chatbot-network:
+  chatbot-network:
+    driver: bridge
