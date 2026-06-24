@@ -1,0 +1,16 @@
+[Unit]
+Description=BestWellness Hotel Chatbot API
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory={{REMOTE_APP_DIR}}
+ExecStart={{REMOTE_APP_DIR}}/HotelChatbot.Api
+Restart=always
+RestartSec=10
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=http://127.0.0.1:{{API_PORT}}
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+
+[Install]
+WantedBy=default.target

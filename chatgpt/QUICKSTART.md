@@ -54,11 +54,11 @@ curl -X POST http://localhost:3001/ask_hotel_question `
 
 ## ChatGPT Integration
 
-Siehe [README.md](README.md) für die vollständige Anleitung zur ChatGPT Custom GPT Konfiguration.
+Siehe [README.md](README.md) und [PRODUCTION.md](PRODUCTION.md).
 
-**SSE Endpoint für ChatGPT:**
-```
-http://localhost:3001/sse
-```
+**SSE Endpoint:**
 
-Für Produktiv-Umgebung mit HTTPS und öffentlicher Domain.
+| Umgebung | URL |
+|----------|-----|
+| Lokal | `http://localhost:3001/sse` |
+| **Produktiv** | **`https://mcp.bestalpine2.ms.mynet.at/sse`** |

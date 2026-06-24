@@ -187,7 +187,7 @@ FALSCH wäre: Details über Hotel Sacher ❌
 │                                      │
 │ Info                                 │
 │ Verbunden am: 17. Feb. 2026         │
-│ URL: https://bestwellness...         │
+│ URL: https://mcp.bestalpine2.ms.mynet.at/sse │
 │ Autorisierung: Keinen               │
 │                                      │
 │ Aktionen                            │

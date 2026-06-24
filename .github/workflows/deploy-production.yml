@@ -1,0 +1,65 @@
+name: Deploy Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Configure SSH key
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "$env:USERPROFILE\.ssh" -Force | Out-Null
+          "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" | Out-File -FilePath "$env:USERPROFILE\.ssh\id_ed25519_bestalpine" -Encoding ascii -NoNewline
+          icacls "$env:USERPROFILE\.ssh\id_ed25519_bestalpine" /inheritance:r /grant:r "$env:USERNAME`:F" | Out-Null
+
+      - name: Write production settings
+        shell: pwsh
+        run: |
+          $settings = @{
+            SshHost = "${{ secrets.DEPLOY_SSH_HOST }}"
+            SshUser = "${{ secrets.DEPLOY_SSH_USER }}"
+            PublicUrl = "${{ secrets.DEPLOY_PUBLIC_URL }}"
+            RemoteAppDir = "/data/web/mcp/home/app"
+            RemoteMcpDir = "/data/web/mcp/home/mcp"
+            PostgresHost = "localhost"
+            PostgresPort = 5432
+            PostgresDatabase = "${{ secrets.POSTGRES_DATABASE }}"
+            PostgresUser = "${{ secrets.POSTGRES_USER }}"
+            PostgresPassword = "${{ secrets.POSTGRES_PASSWORD }}"
+            OpenAiEndpoint = "${{ secrets.OPENAI_ENDPOINT }}"
+            OpenAiApiKey = "${{ secrets.OPENAI_API_KEY }}"
+            OpenAiDeploymentName = "${{ secrets.OPENAI_DEPLOYMENT }}"
+            OpenAiEmbeddingDeployment = "${{ secrets.OPENAI_EMBEDDING_DEPLOYMENT }}"
+            OpenAiEmbeddingDimensions = "${{ secrets.OPENAI_EMBEDDING_DIMENSIONS }}"
+            SpeechSubscriptionKey = "${{ secrets.SPEECH_KEY }}"
+            SpeechServiceRegion = "${{ secrets.SPEECH_REGION }}"
+            ElevenLabsApiKey = "${{ secrets.ELEVENLABS_KEY }}"
+            ElevenLabsVoiceId = "${{ secrets.ELEVENLABS_VOICE }}"
+            AdminPassword = "${{ secrets.ADMIN_PASSWORD }}"
+            HotelPassword = "${{ secrets.HOTEL_PASSWORD }}"
+            TokenSecret = "${{ secrets.TOKEN_SECRET }}"
+            ApiPort = 8080
+            McpPort = 3001
+          }
+          New-Item -ItemType Directory -Path deploy -Force | Out-Null
+          $settings | ConvertTo-Json -Depth 5 | Set-Content deploy/production.settings.json -Encoding UTF8
+
+      - name: Deploy to production
+        shell: pwsh
+        run: .\DEPLOY-PRODUCTION.ps1 -NonInteractive

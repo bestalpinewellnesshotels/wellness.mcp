@@ -183,12 +183,12 @@
     @media (max-width: 560px) { .form-row.cols-2 { grid-template-columns: 1fr; } }
     .field { display: flex; flex-direction: column; gap: .3rem; }
     .field label { font-size: .8125rem; font-weight: 500; }
-    .field input, .field textarea {
+    .field input, .field textarea, .field select {
       border: 1px solid var(--border); border-radius: var(--r);
       padding: .5rem .75rem; font-size: .875rem; font-family: inherit;
       color: var(--text); background: var(--surface); outline: none; transition: border-color .12s;
     }
-    .field input:focus, .field textarea:focus { border-color: var(--text); }
+    .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--text); }
     .field input[readonly] { background: var(--bg); color: var(--muted); cursor: default; }
     .field textarea { resize: vertical; min-height: 300px; font-family: var(--mono); font-size: .8rem; line-height: 1.6; }
     .field textarea.short { min-height: 70px; }
@@ -240,15 +240,115 @@
     .status-dismiss { margin-top: 1rem; text-align: center; }
     .status-dismiss button { background: none; border: none; color: var(--muted); font-size: 0.75rem; cursor: pointer; text-decoration: underline; }
     .status-dismiss button:hover { color: var(--text); }
+
+    #login-overlay {
+      position: fixed; inset: 0; z-index: 2000;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center; padding: 1.5rem;
+    }
+    .login-box {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+      box-shadow: 0 8px 24px rgba(0,0,0,.08); width: 100%; max-width: 380px; padding: 2rem;
+    }
+    .login-box h2 { font-size: 1.05rem; font-weight: 600; margin-bottom: .35rem; }
+    .login-box p { font-size: .8125rem; color: var(--muted); margin-bottom: 1.25rem; line-height: 1.55; }
+    .login-error { font-size: .8125rem; color: #b91c1c; min-height: 1.2em; margin-top: .5rem; }
+    #app-shell { display: none; }
+    #auth-role-badge {
+      font-size: .68rem; font-weight: 600; padding: .15rem .45rem; border-radius: 3px;
+      background: var(--bg); color: var(--muted); border: 1px solid var(--border);
+    }
+    #auth-role-badge.role-admin { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+    #auth-role-badge.role-hotel { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+
+    .feedback-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+    .feedback-form-section {
+      flex-shrink: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 1rem 1.25rem;
+    }
+    .feedback-form-section h3 { font-size: .875rem; font-weight: 600; margin-bottom: .85rem; }
+    .feedback-list-section {
+      display: flex;
+      flex-direction: column;
+      gap: .75rem;
+    }
+    .feedback-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: .85rem 1rem;
+    }
+    .feedback-card-head {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem;
+      margin-bottom: .45rem;
+    }
+    .feedback-card-title { font-size: .875rem; font-weight: 600; }
+    .feedback-card-meta { font-size: .72rem; color: var(--muted); margin-top: .15rem; }
+    .feedback-card-badges { display: flex; align-items: center; gap: .35rem; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+    .feedback-keyword-badge {
+      font-size: .68rem; font-weight: 600; padding: .15rem .45rem; border-radius: 3px;
+      background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa;
+    }
+    .feedback-hotel-badge {
+      font-size: .68rem; font-weight: 600; padding: .15rem .45rem; border-radius: 3px;
+      background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;
+    }
+    .feedback-status-badge {
+      font-size: .65rem; font-weight: 600; padding: .1rem .4rem; border-radius: 3px;
+      background: #fef9c3; color: #854d0e; border: 1px solid #fde68a;
+    }
+    .feedback-employee-badge {
+      font-size: .65rem; font-weight: 600; padding: .1rem .4rem; border-radius: 3px;
+      background: var(--bg); color: var(--faint); border: 1px solid var(--border);
+    }
+    .feedback-preview {
+      font-size: .8125rem; color: var(--text); line-height: 1.6;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .feedback-full {
+      display: none; font-size: .8125rem; color: var(--text); line-height: 1.6;
+      white-space: pre-wrap; word-break: break-word; margin-top: .35rem;
+    }
+    .feedback-full.open { display: block; }
+    .feedback-actions { margin-top: .55rem; display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+    .feedback-status-edit {
+      margin-top: .75rem; padding-top: .75rem; border-top: 1px solid var(--border);
+    }
+    .feedback-status-edit .field input { min-height: auto; }
   </style>
 </head>
 <body>
 
+<div id="login-overlay">
+  <div class="login-box">
+    <h2>Admin-Bereich</h2>
+    <p>Bitte Passwort eingeben, um fortzufahren.</p>
+    <div class="field">
+      <label for="login-password">Passwort</label>
+      <input id="login-password" type="password" autocomplete="current-password" />
+    </div>
+    <div style="margin-top:1rem;display:flex;justify-content:flex-end;">
+      <button class="btn-primary" id="login-submit-btn" onclick="submitLogin()">Anmelden</button>
+    </div>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<div id="app-shell">
 <header>
   <h1>System Prompts</h1>
   <div style="display:flex;align-items:center;gap:1rem">
+    <span id="auth-role-badge"></span>
     <span style="font-size:.72rem;color:var(--faint);font-family:ui-monospace,monospace" id="api-base-display"></span>
     <button class="btn-ghost btn-sm" onclick="loadPrompts()">&#8635; Refresh</button>
+    <button class="btn-ghost btn-sm" onclick="logout()">Abmelden</button>
   </div>
 </header>
 
@@ -265,9 +365,13 @@
     <span class="tab-dot" style="background:#059669"></span>
     Crawling
   </button>
-  <button class="tab-btn" style="--tab-color:#dc2626" onclick="switchTab('test',this)">
+  <button class="tab-btn admin-only" style="--tab-color:#dc2626" onclick="switchTab('test',this)">
     <span class="tab-dot" style="background:#dc2626"></span>
     Crawler Test
+  </button>
+  <button class="tab-btn" style="--tab-color:#d97706" onclick="switchTab('feedback',this)">
+    <span class="tab-dot" style="background:#d97706"></span>
+    Feedback
   </button>
 </div>
 
@@ -277,7 +381,7 @@
     <div class="toolbar">
       <span class="toolbar-desc">Pipeline executed for every request: Language &rarr; Ethics &rarr; Topic check &rarr; Search &rarr; Answer</span>
       <div class="toolbar-actions">
-        <button class="btn-ghost btn-sm" onclick="downloadBackup()">&#8595; Backup</button>
+        <button class="btn-ghost btn-sm admin-only" onclick="downloadBackup()">&#8595; Backup</button>
       </div>
     </div>
     <div id="agent-list" class="prompt-list"><div class="state-msg">Loading&hellip;</div></div>
@@ -287,7 +391,7 @@
     <div class="toolbar">
       <span class="toolbar-desc">Controls what ChatGPT / Claude sees when calling the BestWellness tool.</span>
       <div class="toolbar-actions">
-        <button class="btn-ghost btn-sm" onclick="downloadBackup()">&#8595; Backup</button>
+        <button class="btn-ghost btn-sm admin-only" onclick="downloadBackup()">&#8595; Backup</button>
       </div>
     </div>
     <div id="mcp-list" class="prompt-list"><div class="state-msg">Loading&hellip;</div></div>
@@ -297,12 +401,12 @@
     <div class="toolbar">
       <span class="toolbar-desc">Verwalte Hotels und analysiere Crawling-Probleme</span>
       <div class="toolbar-actions">
-        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8125rem;cursor:pointer;">
+        <label class="admin-only" style="display:flex;align-items:center;gap:0.4rem;font-size:0.8125rem;cursor:pointer;">
           <input type="checkbox" id="skip-existing-urls" style="cursor:pointer;">
           <span>Nur neue URLs crawlen</span>
         </label>
         <button class="btn-primary btn-sm" onclick="loadCrawlData()">&#8635; Aktualisieren</button>
-        <button class="btn-ghost btn-sm" onclick="crawlSelectedHotels()">🚀 Ausgewählte crawlen</button>
+        <button class="btn-ghost btn-sm admin-only" onclick="crawlSelectedHotels()">🚀 Ausgewählte crawlen</button>
       </div>
     </div>
     
@@ -316,7 +420,7 @@
         <table id="crawl-table" style="width:100%;border-collapse:collapse;font-size:0.8125rem;">
           <thead>
             <tr style="border-bottom:2px solid var(--border);">
-              <th style="padding:0.5rem 0.75rem;text-align:left;font-weight:600;"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)" title="Alle auswählen"></th>
+              <th class="admin-only" style="padding:0.5rem 0.75rem;text-align:left;font-weight:600;"><input type="checkbox" id="select-all" onchange="toggleSelectAll(this)" title="Alle auswählen"></th>
               <th style="padding:0.5rem 0.75rem;text-align:left;font-weight:600;">Status</th>
               <th style="padding:0.5rem 0.75rem;text-align:left;font-weight:600;">Hotel</th>
               <th style="padding:0.5rem 0.75rem;text-align:left;font-weight:600;">Domain</th>
@@ -381,7 +485,7 @@
             style="width:100%;border:1px solid var(--border);border-radius:var(--r);padding:0.5rem 0.75rem;font-size:0.875rem;font-family:inherit;"
           />
         </div>
-        <button class="btn-primary" onclick="runCrawlerTest()" style="white-space:nowrap;">
+        <button class="btn-primary admin-only" onclick="runCrawlerTest()" style="white-space:nowrap;">
           🚀 Test starten
         </button>
       </div>
@@ -476,7 +580,45 @@
     </div>
   </div>
 
+  <div class="tab-panel" id="tab-feedback">
+    <div class="feedback-layout">
+      <div class="feedback-form-section">
+        <h3 id="fb-form-title">Neues Feedback</h3>
+        <div class="form-row cols-2" style="margin-bottom:.75rem;">
+          <div class="field">
+            <label for="fb-hotel">Hotel</label>
+            <select id="fb-hotel">
+              <option value="">Hotel auswählen…</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="fb-name">Name Mitarbeiter/in</label>
+            <input id="fb-name" type="text" placeholder="Ihr Name" />
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:.75rem;">
+          <label for="fb-keyword">Stichwort</label>
+          <input id="fb-keyword" type="text" placeholder="z.B. Crawling, Prompt, Bug" />
+        </div>
+        <div class="field" style="margin-bottom:.75rem;">
+          <label for="fb-text">Text</label>
+          <textarea id="fb-text" class="short" style="min-height:120px;" placeholder="Beschreiben Sie Ihr Feedback…"></textarea>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:.5rem;">
+          <button class="btn-ghost" id="fb-cancel-btn" onclick="cancelFeedbackEdit()" style="display:none;">Abbrechen</button>
+          <button class="btn-primary" id="fb-submit-btn" onclick="submitFeedback()">Feedback senden</button>
+        </div>
+      </div>
+
+      <div class="feedback-list-section" id="feedback-list">
+        <div class="state-msg">Lade Feedbacks&hellip;</div>
+      </div>
+    </div>
+  </div>
+
 </main>
+
+</div><!-- #app-shell -->
 
 <!-- Edit Modal -->
 <div class="modal-backdrop" id="edit-modal">
@@ -565,7 +707,155 @@
 
 <script>
 var API_BASE = window.location.protocol + '//' + window.location.host + '/api/admin/system-prompts';
+var ADMIN_API_BASE = window.location.protocol + '//' + window.location.host + '/api/admin';
+var AUTH_STORAGE_KEY = 'adminAuth';
+var authRole = null;
+
 document.getElementById('api-base-display').textContent = API_BASE;
+
+function getAuth() {
+  try {
+    var raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function setAuth(data) {
+  if (data) localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(data));
+  else localStorage.removeItem(AUTH_STORAGE_KEY);
+}
+
+function authHeaders() {
+  var auth = getAuth();
+  if (!auth || !auth.token) return {};
+  return { Authorization: 'Bearer ' + auth.token };
+}
+
+function adminFetch(url, opts) {
+  opts = opts || {};
+  var headers = Object.assign({ 'Content-Type': 'application/json' }, authHeaders(), opts.headers || {});
+  return fetch(url, {
+    method: opts.method || 'GET',
+    body: opts.body,
+    headers: headers
+  }).then(function(r) {
+    if (r.status === 401) {
+      logout(false);
+      throw new Error('Sitzung abgelaufen — bitte erneut anmelden.');
+    }
+    return r;
+  });
+}
+
+function apiFetch(path, opts) {
+  opts = opts || {};
+  return adminFetch(API_BASE + (path || ''), opts).then(function(r) {
+    if (!r.ok) return r.json().catch(function() { return {}; }).then(function(j) { throw new Error(j.message || ('HTTP ' + r.status)); });
+    if (r.status === 204) return null;
+    return r.json();
+  });
+}
+
+function showLogin() {
+  document.getElementById('login-overlay').style.display = 'flex';
+  document.getElementById('app-shell').style.display = 'none';
+  document.getElementById('login-error').textContent = '';
+  document.getElementById('login-password').value = '';
+}
+
+function showApp() {
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('app-shell').style.display = 'block';
+  updateRoleBadge();
+  applyRoleRestrictions();
+  loadPrompts();
+}
+
+function updateRoleBadge() {
+  var badge = document.getElementById('auth-role-badge');
+  if (authRole === 'admin') {
+    badge.textContent = 'Admin';
+    badge.className = 'role-admin';
+  } else if (authRole === 'hotel') {
+    badge.textContent = 'Hotel';
+    badge.className = 'role-hotel';
+  } else {
+    badge.textContent = '';
+    badge.className = '';
+  }
+}
+
+function applyRoleRestrictions() {
+  var isAdmin = authRole === 'admin';
+  document.querySelectorAll('.admin-only').forEach(function(el) {
+    el.style.display = isAdmin ? '' : 'none';
+  });
+}
+
+function submitLogin() {
+  var password = document.getElementById('login-password').value;
+  var btn = document.getElementById('login-submit-btn');
+  var errorEl = document.getElementById('login-error');
+  errorEl.textContent = '';
+  btn.disabled = true;
+
+  fetch(ADMIN_API_BASE + '/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: password })
+  }).then(function(r) {
+    if (!r.ok) {
+      return r.json().catch(function() { return {}; }).then(function(j) {
+        throw new Error(j.message || 'Anmeldung fehlgeschlagen');
+      });
+    }
+    return r.json();
+  }).then(function(data) {
+    setAuth({ token: data.token, role: data.role, expiresAt: data.expiresAt });
+    authRole = data.role;
+    showApp();
+  }).catch(function(e) {
+    errorEl.textContent = e.message;
+  }).finally(function() {
+    btn.disabled = false;
+  });
+}
+
+function verifyStoredAuth() {
+  var auth = getAuth();
+  if (!auth || !auth.token) return Promise.resolve(false);
+
+  return fetch(ADMIN_API_BASE + '/auth/verify', { headers: authHeaders() })
+    .then(function(r) {
+      if (!r.ok) {
+        setAuth(null);
+        return false;
+      }
+      return r.json().then(function(data) {
+        authRole = data.role;
+        showApp();
+        return true;
+      });
+    })
+    .catch(function() {
+      setAuth(null);
+      return false;
+    });
+}
+
+function logout(showLoginScreen) {
+  if (showLoginScreen !== false) showLoginScreen = true;
+  setAuth(null);
+  authRole = null;
+  closeModal();
+  if (showLoginScreen) showLogin();
+}
+
+document.getElementById('login-password').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') submitLogin();
+});
 
 function switchTab(id, btn) {
   document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
@@ -576,6 +866,10 @@ function switchTab(id, btn) {
   // Load crawl data when switching to crawl tab
   if (id === 'crawl') {
     loadCrawlData();
+  }
+  if (id === 'feedback') {
+    loadFeedbackHotels();
+    loadFeedback();
   }
 }
 
@@ -599,19 +893,6 @@ var MCP_PROMPTS = [
 
 var allPrompts = [];
 var editingKey = null;
-
-function apiFetch(path, opts) {
-  opts = opts || {};
-  return fetch(API_BASE + (path || ''), {
-    headers: Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {}),
-    method: opts.method || 'GET',
-    body: opts.body
-  }).then(function(r) {
-    if (!r.ok) return r.json().catch(function() { return {}; }).then(function(j) { throw new Error(j.message || ('HTTP ' + r.status)); });
-    if (r.status === 204) return null;
-    return r.json();
-  });
-}
 
 function loadPrompts() {
   apiFetch('').then(function(data) {
@@ -652,7 +933,9 @@ function renderTab(tabId, defs) {
     html += '</div>';
     html += '</div>';
     html += '<div class="card-body"><div class="card-preview' + (def.isConfig ? ' config-value' : '') + '">' + esc(preview) + '</div></div>';
-    html += '<div class="card-foot"><button class="btn-ghost btn-sm" onclick="openEdit(\'' + def.key + '\')">Bearbeiten</button></div>';
+    if (authRole === 'admin') {
+      html += '<div class="card-foot"><button class="btn-ghost btn-sm" onclick="openEdit(\'' + def.key + '\')">Bearbeiten</button></div>';
+    }
     html += '</div>';
     if (idx < defs.length - 1) html += '<div class="connector">&#8595;</div>';
   });
@@ -673,6 +956,7 @@ function toggleEnSection() {
 }
 
 function openEdit(key) {
+  if (authRole !== 'admin') return;
   editingKey = key;
   var def = findDef(key);
   var p   = findPrompt(key);
@@ -716,6 +1000,7 @@ function openEdit(key) {
     enSection.style.display = '';
     document.getElementById('modal-save-btn').innerHTML = '\u2713 \u00dcbersetzen &amp; Speichern';
   }
+  document.getElementById('modal-save-btn').disabled = false;
   document.getElementById('edit-modal').classList.add('open');
 }
 
@@ -729,6 +1014,8 @@ document.getElementById('f-active').addEventListener('change', function() { upda
 
 function closeModal() {
   document.getElementById('edit-modal').classList.remove('open');
+  document.getElementById('modal-save-btn').disabled = false;
+  document.getElementById('translate-status').textContent = '';
   editingKey = null;
 }
 
@@ -871,6 +1158,250 @@ function hideStatus() {
   document.getElementById('status-overlay').classList.remove('active');
 }
 
+// ===== FEEDBACK TAB FUNCTIONS =====
+var feedbackItems = [];
+var feedbackHotels = [];
+var feedbackExpanded = {};
+var feedbackEditingId = null;
+var FEEDBACK_PREVIEW_LEN = 200;
+
+function formatFeedbackDate(iso) {
+  try {
+    return new Date(iso).toLocaleString('de-DE', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  } catch (e) {
+    return iso || '';
+  }
+}
+
+function truncateFeedback(text, maxLen) {
+  if (!text || text.length <= maxLen) return text;
+  return text.substring(0, maxLen).trim() + '…';
+}
+
+function loadFeedbackHotels() {
+  if (feedbackHotels.length) {
+    renderFeedbackHotelSelect();
+    return Promise.resolve();
+  }
+
+  return fetch(ADMIN_API_BASE + '/hotels')
+    .then(function(r) {
+      if (!r.ok) return r.json().catch(function() { return {}; }).then(function(j) { throw new Error(j.message || j.error || ('HTTP ' + r.status)); });
+      return r.json();
+    })
+    .then(function(data) {
+      feedbackHotels = (data && data.hotels) ? data.hotels.slice() : [];
+      feedbackHotels.sort(function(a, b) {
+        return (a.name || '').localeCompare(b.name || '', 'de');
+      });
+      renderFeedbackHotelSelect();
+    })
+    .catch(function(e) {
+      toast('Hotels konnten nicht geladen werden: ' + e.message, 'error');
+    });
+}
+
+function renderFeedbackHotelSelect(selectedHotelId) {
+  var selectEl = document.getElementById('fb-hotel');
+  if (!selectEl) return;
+
+  var options = '<option value="">Hotel auswählen…</option>';
+  feedbackHotels.forEach(function(hotel) {
+    var selected = selectedHotelId && hotel.hotelId === selectedHotelId ? ' selected' : '';
+    options += '<option value="' + escAttr(hotel.hotelId) + '"' + selected + '>' + esc(hotel.name) + '</option>';
+  });
+  selectEl.innerHTML = options;
+}
+
+function resetFeedbackForm() {
+  feedbackEditingId = null;
+  document.getElementById('fb-form-title').textContent = 'Neues Feedback';
+  document.getElementById('fb-submit-btn').textContent = 'Feedback senden';
+  document.getElementById('fb-cancel-btn').style.display = 'none';
+  renderFeedbackHotelSelect();
+  document.getElementById('fb-name').value = '';
+  document.getElementById('fb-keyword').value = '';
+  document.getElementById('fb-text').value = '';
+}
+
+function startFeedbackEdit(id) {
+  var item = feedbackItems.find(function(fb) { return fb.id === id; });
+  if (!item) return;
+
+  feedbackEditingId = id;
+  document.getElementById('fb-form-title').textContent = 'Feedback bearbeiten';
+  document.getElementById('fb-submit-btn').textContent = 'Änderungen speichern';
+  document.getElementById('fb-cancel-btn').style.display = '';
+  renderFeedbackHotelSelect(item.hotelId || '');
+  document.getElementById('fb-name').value = item.name || '';
+  document.getElementById('fb-keyword').value = item.keyword || '';
+  document.getElementById('fb-text').value = item.text || '';
+  document.querySelector('.feedback-form-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cancelFeedbackEdit() {
+  resetFeedbackForm();
+}
+
+function loadFeedback() {
+  var listEl = document.getElementById('feedback-list');
+  listEl.innerHTML = '<div class="state-msg">Lade Feedbacks&hellip;</div>';
+
+  Promise.all([loadFeedbackHotels(), adminFetch(ADMIN_API_BASE + '/feedback')
+    .then(function(r) {
+      if (!r.ok) return r.json().catch(function() { return {}; }).then(function(j) { throw new Error(j.message || ('HTTP ' + r.status)); });
+      return r.json();
+    })])
+    .then(function(results) {
+      feedbackItems = results[1] || [];
+      renderFeedbackList();
+    })
+    .catch(function(e) {
+      listEl.innerHTML = '<div class="state-msg" style="color:#b91c1c">Ladefehler: ' + esc(e.message) + '</div>';
+    });
+}
+
+function renderFeedbackList() {
+  var listEl = document.getElementById('feedback-list');
+
+  if (!feedbackItems.length) {
+    listEl.innerHTML = '<div class="state-msg">Noch kein Feedback vorhanden.</div>';
+    return;
+  }
+
+  listEl.innerHTML = feedbackItems.map(function(item) {
+    var isExpanded = !!feedbackExpanded[item.id];
+    var needsToggle = item.text && item.text.length > FEEDBACK_PREVIEW_LEN;
+    var preview = needsToggle && !isExpanded ? truncateFeedback(item.text, FEEDBACK_PREVIEW_LEN) : item.text;
+    var hotelLabel = item.hotelName || 'Hotel nicht angegeben';
+    var statusBadge = item.status
+      ? '<span class="feedback-status-badge">' + esc(item.status) + '</span>'
+      : '';
+
+    var toggleBtn = needsToggle
+      ? '<button class="btn-ghost btn-sm" onclick="toggleFeedbackDetails(' + item.id + ')">' + (isExpanded ? 'Weniger' : 'Details') + '</button>'
+      : '';
+
+    var editBtn = '<button class="btn-ghost btn-sm" onclick="startFeedbackEdit(' + item.id + ')">Bearbeiten</button>';
+
+    var statusEdit = '';
+    if (isExpanded && authRole === 'admin') {
+      statusEdit =
+        '<div class="feedback-status-edit">' +
+          '<div class="field">' +
+            '<label for="fb-status-' + item.id + '">Status (Admin)</label>' +
+            '<input id="fb-status-' + item.id + '" type="text" value="' + escAttr(item.status || '') + '" placeholder="z.B. In Bearbeitung, Erledigt" />' +
+          '</div>' +
+          '<div style="margin-top:.5rem;display:flex;justify-content:flex-end;">' +
+            '<button class="btn-primary btn-sm" onclick="saveFeedbackStatus(' + item.id + ')">Status speichern</button>' +
+          '</div>' +
+        '</div>';
+    }
+
+    var previewBlock = needsToggle && !isExpanded
+      ? '<div class="feedback-preview" id="fb-preview-' + item.id + '">' + esc(preview) + '</div>'
+      : '';
+
+    var fullBlock = needsToggle
+      ? '<div class="feedback-full' + (isExpanded ? ' open' : '') + '" id="fb-full-' + item.id + '">' + esc(item.text) + '</div>'
+      : '<div class="feedback-preview">' + esc(item.text) + '</div>';
+
+    return '<div class="feedback-card" id="fb-card-' + item.id + '">' +
+      '<div class="feedback-card-head">' +
+        '<div>' +
+          '<div class="feedback-card-title">' + esc(hotelLabel) + '</div>' +
+          '<div class="feedback-card-meta">' + formatFeedbackDate(item.createdAt) + '</div>' +
+        '</div>' +
+        '<div class="feedback-card-badges">' +
+          '<span class="feedback-hotel-badge">' + esc(hotelLabel) + '</span>' +
+          '<span class="feedback-keyword-badge">' + esc(item.keyword) + '</span>' +
+          statusBadge +
+          '<span class="feedback-employee-badge">' + esc(item.name) + '</span>' +
+        '</div>' +
+      '</div>' +
+      previewBlock +
+      fullBlock +
+      '<div class="feedback-actions">' + editBtn + toggleBtn + '</div>' +
+      statusEdit +
+    '</div>';
+  }).join('');
+}
+
+function escAttr(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function toggleFeedbackDetails(id) {
+  feedbackExpanded[id] = !feedbackExpanded[id];
+  renderFeedbackList();
+}
+
+function submitFeedback() {
+  var hotelId = document.getElementById('fb-hotel').value.trim();
+  var name = document.getElementById('fb-name').value.trim();
+  var keyword = document.getElementById('fb-keyword').value.trim();
+  var text = document.getElementById('fb-text').value.trim();
+  var btn = document.getElementById('fb-submit-btn');
+  var isEdit = feedbackEditingId !== null;
+
+  if (!hotelId || !name || !keyword || !text) {
+    toast('Hotel, Name Mitarbeiter/in, Stichwort und Text sind Pflichtfelder.', 'error');
+    return;
+  }
+
+  btn.disabled = true;
+
+  var url = isEdit ? (ADMIN_API_BASE + '/feedback/' + feedbackEditingId) : (ADMIN_API_BASE + '/feedback');
+  var method = isEdit ? 'PUT' : 'POST';
+  var payload = { hotelId: hotelId, name: name, keyword: keyword, text: text };
+
+  adminFetch(url, {
+    method: method,
+    body: JSON.stringify(payload)
+  }).then(function(r) {
+    if (!r.ok) return r.json().catch(function() { return {}; }).then(function(j) { throw new Error(j.message || ('HTTP ' + r.status)); });
+    return r.json();
+  }).then(function() {
+    resetFeedbackForm();
+    toast(isEdit ? 'Feedback aktualisiert.' : 'Feedback gespeichert.', 'success');
+    loadFeedback();
+  }).catch(function(e) {
+    toast((isEdit ? 'Aktualisieren' : 'Speichern') + ' fehlgeschlagen: ' + e.message, 'error');
+  }).finally(function() {
+    btn.disabled = false;
+  });
+}
+
+function saveFeedbackStatus(id) {
+  if (authRole !== 'admin') return;
+
+  var input = document.getElementById('fb-status-' + id);
+  if (!input) return;
+
+  adminFetch(ADMIN_API_BASE + '/feedback/' + id + '/status', {
+    method: 'PATCH',
+    body: JSON.stringify({ status: input.value.trim() })
+  }).then(function(r) {
+    if (!r.ok) return r.json().catch(function() { return {}; }).then(function(j) { throw new Error(j.message || ('HTTP ' + r.status)); });
+    return r.json();
+  }).then(function(updated) {
+    for (var i = 0; i < feedbackItems.length; i++) {
+      if (feedbackItems[i].id === id) {
+        feedbackItems[i] = updated;
+        break;
+      }
+    }
+    renderFeedbackList();
+    toast('Status gespeichert.', 'success');
+  }).catch(function(e) {
+    toast('Status speichern fehlgeschlagen: ' + e.message, 'error');
+  });
+}
+
 // ===== CRAWLING TAB FUNCTIONS =====
 var crawlData = [];
 var selectedHotels = new Set();
@@ -878,11 +1409,11 @@ var currentJobId = null;
 var statusPollInterval = null;
 
 function loadCrawlData() {
-  var crawlApiBase = window.location.protocol + '//' + window.location.host + '/api/admin/crawl';
+  var crawlApiBase = ADMIN_API_BASE + '/crawl';
   
   showStatus('Lade Hotel-Daten', 'Analysiere Crawling-Status aller Hotels...', 'Dies kann einige Sekunden dauern');
   
-  fetch(crawlApiBase + '/hotels-analysis')
+  adminFetch(crawlApiBase + '/hotels-analysis')
     .then(function(r) { return r.json(); })
     .then(function(data) {
       crawlData = data.analysis || [];
@@ -910,8 +1441,11 @@ function loadCrawlData() {
 function renderCrawlTable() {
   var tbody = document.getElementById('crawl-table-body');
   
+  var isAdmin = authRole === 'admin';
+  var colSpan = isAdmin ? 8 : 7;
+
   if (crawlData.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:var(--muted);">Keine Hotels gefunden</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="' + colSpan + '" style="padding:2rem;text-align:center;color:var(--muted);">Keine Hotels gefunden</td></tr>';
     return;
   }
   
@@ -933,9 +1467,12 @@ function renderCrawlTable() {
     }[h.status] || '?';
     
     var isChecked = selectedHotels.has(h.hotelId) ? 'checked' : '';
+    var checkboxCell = isAdmin
+      ? '<td style="padding:0.5rem 0.75rem;"><input type="checkbox" class="hotel-checkbox" data-hotel-id="' + h.hotelId + '" ' + isChecked + ' onchange="toggleHotelSelect(this)"></td>'
+      : '';
     
     return '<tr style="border-bottom:1px solid var(--border);">' +
-      '<td style="padding:0.5rem 0.75rem;"><input type="checkbox" class="hotel-checkbox" data-hotel-id="' + h.hotelId + '" ' + isChecked + ' onchange="toggleHotelSelect(this)"></td>' +
+      checkboxCell +
       '<td style="padding:0.5rem 0.75rem;"><span style="font-size:1.2rem;color:' + statusColor + ';" title="' + h.status + '">' + statusLabel + '</span></td>' +
       '<td style="padding:0.5rem 0.75rem;font-weight:500;">' + esc(h.name) + '</td>' +
       '<td style="padding:0.5rem 0.75rem;font-family:var(--mono);font-size:0.75rem;color:var(--muted);">' + esc(h.domain) + '</td>' +
@@ -989,11 +1526,10 @@ function analyzeHotel(hotelId) {
   document.getElementById('detail-recommendations').innerHTML = '';
   document.getElementById('crawl-details').style.display = 'block';
   
-  var crawlApiBase = window.location.protocol + '//' + window.location.host + '/api/admin/crawl';
+  var crawlApiBase = ADMIN_API_BASE + '/crawl';
   
-  fetch(crawlApiBase + '/analyze-problems', {
+  adminFetch(crawlApiBase + '/analyze-problems', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ hotelId: hotelId })
   })
     .then(function(r) { return r.json(); })
@@ -1019,6 +1555,7 @@ function closeDetails() {
 }
 
 function crawlSelectedHotels() {
+  if (authRole !== 'admin') return;
   if (selectedHotels.size === 0) {
     toast('Bitte wähle mindestens ein Hotel aus', 'error');
     return;
@@ -1039,11 +1576,8 @@ function crawlSelectedHotels() {
     ''
   );
   
-  var apiBase = window.location.protocol + '//' + window.location.host + '/api/admin';
-  
-  fetch(apiBase + '/crawl-multiple-hotels', {
+  adminFetch(ADMIN_API_BASE + '/crawl-multiple-hotels', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       urls: urls,
       useSitemap: true,
@@ -1080,9 +1614,7 @@ function crawlSelectedHotels() {
 }
 
 function pollCrawlStatus(jobId) {
-  var apiBase = window.location.protocol + '//' + window.location.host + '/api/admin';
-  
-  fetch(apiBase + '/crawl/status/' + jobId)
+  adminFetch(ADMIN_API_BASE + '/crawl/status/' + jobId)
     .then(function(r) { 
       if (!r.ok) throw new Error('Status nicht verfügbar');
       return r.json(); 
@@ -1157,6 +1689,7 @@ function pollCrawlStatus(jobId) {
 
 // ===== CRAWLER TEST FUNCTIONS =====
 function runCrawlerTest() {
+  if (authRole !== 'admin') return;
   var url = document.getElementById('test-url').value.trim();
   
   if (!url) {
@@ -1171,11 +1704,8 @@ function runCrawlerTest() {
   
   showStatus('Teste Crawler', 'WebCrawler wird gestartet...', url);
   
-  var apiBase = window.location.protocol + '//' + window.location.host + '/api/admin';
-  
-  fetch(apiBase + '/test-crawler', {
+  adminFetch(ADMIN_API_BASE + '/test-crawler', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url: url })
   })
     .then(function(r) { 
@@ -1233,7 +1763,9 @@ function displayTestResults(data) {
   resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-loadPrompts();
+verifyStoredAuth().then(function(ok) {
+  if (!ok) showLogin();
+});
 </script>
 </body>
 </html>

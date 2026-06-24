@@ -1,3 +1,3 @@
 #!/usr/bin/env powershell
 # Legacy-Wrapper: bitte DEPLOY-PRODUCTION.ps1 verwenden.
-& "$PSScriptRoot\DEPLOY-PRODUCTION.ps1" @args
+& (Join-Path (Split-Path $PSScriptRoot -Parent) "DEPLOY-PRODUCTION.ps1") @args

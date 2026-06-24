@@ -3,6 +3,7 @@ using HotelChatbot.Domain.Interfaces;
 using HotelChatbot.Infrastructure.Repositories;
 using HotelChatbot.Infrastructure.Services;
 using HotelChatbot.Infrastructure.VectorStore;
+using HotelChatbot.Api.Admin;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
@@ -56,6 +57,7 @@ builder.Services.AddSingleton<IVectorStore, PostgreSQLVectorStore>();
 builder.Services.AddSingleton<IHotelRepository, PostgreSQLHotelRepository>();
 builder.Services.AddSingleton<IChatSessionRepository, PostgreSQLChatSessionRepository>();
 builder.Services.AddSingleton<ISystemPromptRepository, PostgreSQLSystemPromptRepository>();
+builder.Services.AddSingleton<IFeedbackRepository, PostgreSQLFeedbackRepository>();
 
 // Query-Logger – schreibt .txt-Protokolle in 'log/' (neben 'wwwroot/')
 var logDirectory = Path.Combine(builder.Environment.ContentRootPath, "log");
@@ -66,6 +68,9 @@ builder.Services.AddSingleton<SystemPromptService>();
 builder.Services.AddSingleton<IPromptTranslationService, PromptTranslationService>();
 builder.Services.AddSingleton<ChatService>();
 builder.Services.AddScoped<VoiceService>();
+
+builder.Services.Configure<AdminAuthOptions>(builder.Configuration.GetSection(AdminAuthOptions.SectionName));
+builder.Services.AddSingleton<AdminAuthService>();
 
 var app = builder.Build();
 
@@ -79,6 +84,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles();  // wwwroot ausliefern (z.B. /admin/prompts.html)
 app.UseCors("AllowChatbotWidget");
+app.UseMiddleware<AdminAuthMiddleware>();
 app.UseAuthorization();
 
 // Bequemer Redirect: /admin  →  /admin/prompts.html

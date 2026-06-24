@@ -21,6 +21,10 @@ dist/
 *.key
 *.pem
 secrets.json
+deploy/bestalpine.local.settings.ps1
+deploy/production.settings.json
+publish/bestalpine-staging/
+publish/deploy-staging/
 
 # Node.js
 node_modules/

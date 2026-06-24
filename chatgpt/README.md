@@ -60,23 +60,22 @@ SSE Endpoint: `http://localhost:3001/sse`
 
 ### 5. Deployment (Produktiv)
 
-Für den Produktiv-Einsatz:
+**Produktiv-URL:** siehe [PRODUCTION.md](PRODUCTION.md)
 
-1. **Server deployen** (z.B. auf deinem VPS):
-   ```bash
-   npm install --production
-   node index.js
-   ```
+| | URL |
+|--|-----|
+| MCP SSE (ChatGPT Connector) | `https://mcp.bestalpine2.ms.mynet.at/sse` |
+| Health | `https://mcp.bestalpine2.ms.mynet.at/health` |
 
-2. **HTTPS aktivieren** (z.B. mit nginx als Reverse Proxy)
+Deploy vom Projektroot:
 
-3. **Process Manager nutzen** (z.B. PM2):
-   ```bash
-   npm install -g pm2
-   pm2 start index.js --name hotelchatbot-mcp
-   pm2 save
-   pm2 startup
-   ```
+```powershell
+.\DEPLOY-PRODUCTION.ps1
+```
+
+Details: `docs/BESTALPINE-DEPLOYMENT.md`
+
+Lokal/Entwicklung:
 
 4. **.env anpassen**:
    ```env

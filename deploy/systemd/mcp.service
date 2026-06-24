@@ -1,0 +1,17 @@
+[Unit]
+Description=BestWellness MCP Server (ChatGPT SSE)
+After=network.target hotelchatbot-api.service
+Wants=hotelchatbot-api.service
+
+[Service]
+Type=simple
+WorkingDirectory={{REMOTE_MCP_DIR}}
+ExecStart={{NODE_BIN}} {{REMOTE_MCP_DIR}}/index.js
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+Environment=PORT={{MCP_PORT}}
+Environment=API_BASE_URL=http://127.0.0.1:{{API_PORT}}
+
+[Install]
+WantedBy=default.target
