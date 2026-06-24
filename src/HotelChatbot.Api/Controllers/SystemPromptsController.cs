@@ -83,20 +83,32 @@ public class SystemPromptsController : ControllerBase
         if (string.IsNullOrWhiteSpace(dto.Key) || dto.Key.Contains(' '))
             return BadRequest(new { message = "Key darf nicht leer sein und keine Leerzeichen enthalten." });
 
-        if (string.IsNullOrWhiteSpace(dto.Content))
-            return BadRequest(new { message = "Content darf nicht leer sein." });
+        var key = dto.Key.Trim();
+        if (IsConfigPrompt(key))
+        {
+            if (string.IsNullOrWhiteSpace(dto.Content))
+                return BadRequest(new { message = "Content darf nicht leer sein." });
+        }
+        else if (string.IsNullOrWhiteSpace(dto.ContentDe))
+        {
+            return BadRequest(new { message = "Deutscher Prompt-Text (contentDe) darf nicht leer sein." });
+        }
 
         // Doppelten Key prüfen
-        var existing = (await _service.GetAllAsync(cancellationToken)).FirstOrDefault(p => p.Key == dto.Key);
+        var existing = (await _service.GetAllAsync(cancellationToken)).FirstOrDefault(p => p.Key == key);
         if (existing != null)
-            return Conflict(new { message = $"Ein System-Prompt mit Key '{dto.Key}' existiert bereits." });
+            return Conflict(new { message = $"Ein System-Prompt mit Key '{key}' existiert bereits." });
+
+        var contentEn = IsConfigPrompt(key)
+            ? dto.Content
+            : await _translation.TranslateToEnglishAsync(dto.ContentDe, cancellationToken);
 
         var prompt = new SystemPrompt
         {
-            Key         = dto.Key.Trim(),
+            Key         = key,
             Name        = dto.Name,
             Description = dto.Description,
-            Content     = dto.Content,
+            Content     = contentEn,
             ContentDe   = dto.ContentDe,
             Language    = dto.Language,
             IsActive    = dto.IsActive,
@@ -122,8 +134,15 @@ public class SystemPromptsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Update(string key, [FromBody] UpdateSystemPromptDto dto, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(dto.Content))
-            return BadRequest(new { message = "Content darf nicht leer sein." });
+        if (IsConfigPrompt(key))
+        {
+            if (string.IsNullOrWhiteSpace(dto.Content))
+                return BadRequest(new { message = "Content darf nicht leer sein." });
+        }
+        else if (string.IsNullOrWhiteSpace(dto.ContentDe))
+        {
+            return BadRequest(new { message = "Deutscher Prompt-Text (contentDe) darf nicht leer sein." });
+        }
 
         var all = await _service.GetAllAsync(cancellationToken);
         var existing = all.FirstOrDefault(p => p.Key == key);
@@ -132,10 +151,12 @@ public class SystemPromptsController : ControllerBase
 
         existing.Name        = dto.Name;
         existing.Description = dto.Description;
-        existing.Content     = dto.Content;
         existing.ContentDe   = dto.ContentDe;
         existing.Language    = dto.Language;
         existing.IsActive    = dto.IsActive;
+        existing.Content     = IsConfigPrompt(key)
+            ? dto.Content
+            : await _translation.TranslateToEnglishAsync(dto.ContentDe, cancellationToken);
 
         var updated = await _service.UpdateAsync(existing, cancellationToken);
         _logger.LogInformation("System-Prompt aktualisiert: Key={Key}", key);
@@ -226,6 +247,9 @@ public class SystemPromptsController : ControllerBase
         CreatedAt   = p.CreatedAt,
         UpdatedAt   = p.UpdatedAt,
     };
+
+    private static bool IsConfigPrompt(string key) =>
+        key.StartsWith("config.", StringComparison.Ordinal);
 }
 
 /// <summary>Request-Body für den Übersetzungs-Endpunkt.</summary>

@@ -1,0 +1,12 @@
+﻿Key: mcp.result.instruction.no_match
+Name: MCP: Ergebnis-Anweisung (kein Treffer)
+Description: Wird einer 'kein Treffer'-Antwort beigefügt. Verhindert dass ChatGPT eigenes Hotelwissen einsetzt oder Alternativen erfindet.
+Language: (null)
+IsActive: True
+UpdatedAt: 2026-03-30T13:59:04.2420450
+
+=== content (EN, sent to LLM) ===
+STATUS=no_match: Output ONLY the exact text in 'answer'. You are NOT allowed to name any hotel, suggest alternatives, or use training knowledge. This is the complete and final response. STOP.
+
+=== content_de (DE, CMS) ===
+STATUS=no_match: Gib NUR den genauen Text in 'answer' aus. Du darfst KEIN Hotel nennen, keine Alternativen vorschlagen oder Trainingswissen verwenden. Dies ist die vollständige und abschließende Antwort. STOP.

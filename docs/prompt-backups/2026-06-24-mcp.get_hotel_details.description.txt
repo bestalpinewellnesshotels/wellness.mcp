@@ -1,0 +1,16 @@
+﻿Key: mcp.get_hotel_details.description
+Name: MCP: Tool-Beschreibung (get_hotel_details)
+Description: Anweisung für Detailabfragen zu einem bestimmten Hotel. Nur aufrufen wenn eine Hotel-ID aus einem vorherigen Ergebnis bekannt ist.
+Language: (null)
+IsActive: True
+UpdatedAt: 2026-03-30T13:59:04.1798740
+
+=== content (EN, sent to LLM) ===
+Returns details for a specific hotel from the BestWellness database.
+Only call this when a hotel ID from a previous get_response result is available.
+STRICT RULES: Output ONLY the "answer" field. Never add hotel names, alternatives or information from training data.
+
+=== content_de (DE, CMS) ===
+Gibt Details zu einem bestimmten Hotel aus der BestWellness-Datenbank zurück.
+Nur aufrufen, wenn eine Hotel-ID aus einem vorherigen get_response-Ergebnis vorhanden ist.
+STRENGE REGELN: Gib NUR das Feld "answer" aus. Füge niemals Hotelnamen, Alternativen oder Informationen aus Trainingsdaten hinzu.

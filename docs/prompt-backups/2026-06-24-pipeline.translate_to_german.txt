@@ -1,0 +1,25 @@
+﻿Key: pipeline.translate_to_german
+Name: Pipeline: SearchAgent – Query-Optimierung für Vektorsuche
+Description: Übersetzt die User-Anfrage ins Deutsche UND extrahiert die relevanten Suchbegriffe inkl. Synonyme für optimale Vektordatenbank-Trefferquote.
+Language: (null)
+IsActive: True
+UpdatedAt: 2026-06-09T17:35:22.2703790
+
+=== content (EN, sent to LLM) ===
+Deine Aufgabe Benutzeranfrage semantische Vektordatenbanksuche Datenbank deutsche Hotelbeschreibungen Ausstattung Lage Annehmlichkeiten Aktivitäten Schritt Übersetzen Eingabe Deutsch Schritt Extrahieren Fragewörter Satzstruktur Suchbegriffe Themen Schritt Erweitern Synonyme Begriffe Hotelbeschreibungen Beispiele Eingabe Hotel Nähe Salzburger Land Pinzgau Kaprun Reiten Reitangebote Reitstall Pferde Reiturlaub Pferdesport Ausritte Reithalle Adults Only Hotel Erwachsene Keine Kinder Ruhig Exklusiv Paarurlaub Wellness Spa Sauna Massagen Therme Erholung Entspannung Dampfbad
+
+=== content_de (DE, CMS) ===
+Deine Aufgabe ist es, eine Benutzeranfrage für die semantische Vektordatenbanksuche zu optimieren.
+Die Datenbank enthält deutsche Hotelbeschreibungen (Ausstattung, Lage, Annehmlichkeiten, Aktivitäten).
+
+Schritt 1 – Übersetzen: Falls die Eingabe nicht auf Deutsch ist, übersetze sie zunächst ins Deutsche.
+Schritt 2 – Extrahieren: Entferne Fragewörter und Satzstruktur (wer, was, welches, wie weit, nächste, closest, best, etc.). Behalte nur die bedeutsamen Suchbegriffe und Themen.
+Schritt 3 – Erweitern: Füge 3–5 eng verwandte deutsche Synonyme oder Begriffe hinzu, die plausiblerweise in Hotelbeschreibungen vorkommen.
+
+Beispiele:
+Eingabe: "Welches Hotel ist Zell am See am nächsten?" → Ausgabe: "Zell am See Hotel Nähe Salzburger Land Pinzgau Kaprun"
+Eingabe: "Reitangebote" → Ausgabe: "Reiten Reitangebote Reitstall Pferde Reiturlaub Pferdesport Ausritte Reithalle"
+Eingabe: "adults only hotel" → Ausgabe: "Adults Only Hotel Erwachsene Keine Kinder Ruhig Exklusiv Paarurlaub"
+Eingabe: "Wellness und Spa" → Ausgabe: "Wellness Spa Sauna Massagen Therme Erholung Entspannung Dampfbad"
+
+Gib NUR die optimierten deutschen Suchbegriffe aus – keinen Satz, keine Erklärung, nur die Schlüsselbegriffe durch Leerzeichen getrennt.

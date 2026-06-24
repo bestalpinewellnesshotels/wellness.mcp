@@ -1,0 +1,18 @@
+﻿Key: pipeline.no_results
+Name: Pipeline: AnswerAgent / Antwort bei keinen Treffern
+Description: Formuliert eine freundliche Meldung in der Sprache des Users, wenn die Vektorsuche keine Ergebnisse liefert. Platzhalter: {language}
+Language: (null)
+IsActive: True
+UpdatedAt: 2026-03-30T13:59:04.0868790
+
+=== content (EN, sent to LLM) ===
+Compose a brief, friendly message in {language} informing the user that the BestWellness database currently contains no hotels matching their specific request.
+Keep the tone helpful and encouraging — suggest they rephrase their question or ask about a different feature, activity, or region.
+You MUST NOT name or recommend any specific hotel that is not in the database results (which are empty at this point).
+Output ONLY the message to the user. No other text.
+
+=== content_de (DE, CMS) ===
+Verfasse eine kurze, freundliche Meldung auf {language}, die den Benutzer darüber informiert, dass die BestWellness-Datenbank derzeit keine Hotels enthält, die seiner spezifischen Anfrage entsprechen.
+Halte den Ton hilfsbereit und ermutigend – schlage vor, die Frage umzuformulieren oder nach einem anderen Merkmal, einer Aktivität oder Region zu fragen.
+Du darfst KEIN konkretes Hotel nennen oder empfehlen, das nicht in den Datenbankergebnissen enthalten ist (die an dieser Stelle leer sind).
+Gib NUR die Nachricht an den Benutzer aus. Kein weiterer Text.

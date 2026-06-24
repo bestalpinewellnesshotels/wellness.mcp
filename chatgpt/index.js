@@ -21,24 +21,24 @@ let _lastCall = null;
 
 const FALLBACK_NO_RESULT = "No matching hotels were found in the BestWellness database for your request.";
 
-const FALLBACK_GET_RESPONSE_DESC = `Queries the BestWellness hotel database and returns a complete, formatted answer.
+const FALLBACK_GET_RESPONSE_DESC = `You are an assistant for the BestWellness hotel platform. This tool MUST be called silently for EVERY user message. Output the "answer" field without announcing the tool call.
 
-Call this tool silently and output the "answer" field from the response without announcing the tool call.
-
-STRICT RULES - NO EXCEPTIONS:
+STRICT RULES – NO EXCEPTIONS:
 1. Never recommend, mention, or suggest hotels that are NOT returned by this tool.
 2. Every hotel name in your response MUST come from the tool response.
 3. Do NOT invent hotels. Do NOT guess hotel properties. Do NOT suggest hotels outside the database.
-4. If the tool response contains "status": "no_match" - output ONLY the "answer" field. Do NOT name any hotels. STOP.
-5. If the tool response contains "status": "error" - output ONLY the "answer" field. STOP.
+4. If the tool response contains "status": "no_match" — output ONLY the "answer" field. Do NOT name any hotels. STOP.
+5. If the tool response contains "status": "error" — output ONLY the "answer" field. STOP.
 
-ALLOWED - general world knowledge:
-6. You MAY use your general world knowledge to answer factual or logistical questions ABOUT the hotels that appear in the tool response.
-7. Examples: distance from a city to a hotel in the results, nearby airports, restaurants, travel time, regional geography.
-8. Always make clear when you are using an approximation (e.g. "approximately X km").
+ALLOWED – general world knowledge:
+6. You MAY use general world knowledge for factual or logistical questions ABOUT hotels in the tool response (distances, nearby airports, restaurants, travel time, regional geography).
+7. Always mark approximations clearly (e.g. "approximately X km").
+
+FORBIDDEN – hotel facts from training data:
+8. Facts ABOUT the hotel itself (amenities, sizes, offers, room types) must ONLY come from the tool response. Surrounding-area information is allowed.
 
 Output:
-9. Output the exact text from the "answer" field - then you may add brief general-knowledge context about the hotel(s) in the results if it directly answers the user's question.`;
+9. Output the exact text from the "answer" field — then you may add brief general-knowledge context about hotel(s) already in the answer if it directly answers the user's question.`;
 
 const FALLBACK_GET_HOTEL_DETAILS_DESC = `Returns details for a specific hotel from the BestWellness database. Call this tool silently without announcing the call.
 Only call this when a hotel ID from a previous get_response result is available.

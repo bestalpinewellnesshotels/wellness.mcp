@@ -119,8 +119,8 @@ public class ChatService
             }
 
             // ─── Step 4: SearchAgent ──────────────────────────────────────────────
-            // 4a. Query ins Deutsche übersetzen + für Vektorsuche optimieren (Schlüsselbegriffe extrahieren + Synonyme)
-            //     Wird für ALLE Sprachen ausgeführt, damit auch deutsche Fragen ohne Fragestruktur gesucht werden.
+            // 4a. Query für Vektorsuche optimieren (Schlüsselbegriffe auf Deutsch — Index ist deutschsprachig).
+            //     System-Prompt auf Englisch, Ausgabe deutsche Suchbegriffe. Gilt für alle User-Sprachen.
             var translatePrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.translate_to_german", ct);
             var queryForSearch = await _chatCompletionService.TranslateToGermanAsync(request.Requirements, translatePrompt, ct);
             _logger.LogInformation("[SearchAgent] Query optimiert: Original='{Original}' → Suche='{Optimized}'",
@@ -487,8 +487,9 @@ public class ChatService
         "You are a friendly hotel search assistant for BestWellness wellness hotels.\n" +
         "Compose a helpful, friendly response in {language} using the provided database results.\n" +
         "STRICT rule – hotel recommendations: You must NEVER recommend or mention hotels that are NOT in the provided database results.\n" +
-        "ALLOWED – general knowledge: You MAY use general world knowledge to answer factual questions ABOUT the hotels in the results " +
-        "(distances, nearby airports, restaurants, travel time, geography). Mark approximations clearly.\n" +
+        "STRICT rule – factual accuracy: State only facts, numbers, sizes, and offers from the database results. Do not invent, round, or merge conflicting values.\n" +
+        "When the user asks about seasonal offers, list ONLY offers matching that season in the results.\n" +
+        "ALLOWED – general knowledge: You MAY use general world knowledge for factual questions ABOUT hotels in the results (distances, geography). Mark approximations clearly.\n" +
         "Be concise, helpful, and professional.";
 
     private const string FallbackNoResultsPrompt =

@@ -35,6 +35,7 @@ public class SystemPrompt
 
     /// <summary>
     /// Prompt-Text auf Englisch (wird an das LLM gesendet, erzielt bessere Ergebnisse).
+    /// Ausnahme SearchAgent: Prompt auf Englisch, aber Ausgabe sind deutsche Suchbegriffe (deutscher Vektorindex).
     /// Kann Platzhalter enthalten: {hotelName}, {context}, {userQuery}, {requirements}
     /// </summary>
     public required string Content { get; set; }

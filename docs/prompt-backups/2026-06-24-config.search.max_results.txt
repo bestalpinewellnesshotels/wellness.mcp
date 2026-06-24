@@ -1,0 +1,12 @@
+﻿Key: config.search.max_results
+Name: Konfiguration: Maximale Suchergebnisse
+Description: Anzahl der Hotels, die die Vektordatenbank maximal zurückliefern soll. Ganzzahl zwischen 1 und 20. Im Admin-Bereich änderbar.
+Language: (null)
+IsActive: True
+UpdatedAt: 2026-06-09T17:32:45.1308030
+
+=== content (EN, sent to LLM) ===
+20
+
+=== content_de (DE, CMS) ===
+20

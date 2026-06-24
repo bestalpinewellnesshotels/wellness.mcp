@@ -1,0 +1,12 @@
+﻿Key: mcp.result.instruction.ok
+Name: MCP: Ergebnis-Anweisung (Treffer)
+Description: Wird jeder erfolgreichen Tool-Antwort als _instruction-Feld beigefügt. Sagt ChatGPT: nur den 'answer'-Text ausgeben, nichts hinzufügen.
+Language: (null)
+IsActive: True
+UpdatedAt: 2026-03-30T13:59:04.2109460
+
+=== content (EN, sent to LLM) ===
+Output the exact text in 'answer'. Every hotel NAME you mention must come from this tool response — never add hotels from outside the database. You MAY add brief general-knowledge context (distances, nearby airports, restaurants) about the hotels already present in the answer.
+
+=== content_de (DE, CMS) ===
+Gib den genauen Text in 'answer' aus. Jeder Hotelname, den du nennst, muss aus dieser Tool-Antwort stammen – füge niemals Hotels hinzu, die nicht in der Datenbank sind. Du DARFST kurzen Allgemeinwissen-Kontext (Entfernungen, nahegelegene Flughäfen, Restaurants) zu den bereits in der Antwort enthaltenen Hotels hinzufügen.

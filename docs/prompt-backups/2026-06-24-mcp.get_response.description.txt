@@ -1,0 +1,33 @@
+﻿Key: mcp.get_response.description
+Name: MCP: Tool-Beschreibung (get_response)
+Description: 
+Language: (null)
+IsActive: True
+UpdatedAt: 2026-06-09T18:36:16.1190850
+
+=== content (EN, sent to LLM) ===
+Please provide the query or parameters for the BestWellness hotel database search.
+
+=== content_de (DE, CMS) ===
+Fragt die BestWellness-Hoteldatenbank ab und gibt eine vollständige, formatierte Antwort zurück.
+
+Rufe dieses Tool still auf und gib das Feld „answer“ aus der Antwort aus, ohne den Toolaufruf anzukündigen.
+
+STRIKTE REGELN – KEINE AUSNAHMEN:
+
+Empfiehl, erwähne oder schlage niemals Hotels vor, die NICHT von diesem Tool zurückgegeben werden.
+Jeder Hotelname in deiner Antwort MUSS aus der Toolantwort stammen.
+Erfinde keine Hotels. Rate keine Hoteleigenschaften. Schlage keine Hotels außerhalb der Datenbank vor.
+Wenn die Toolantwort „status“: „no_match“ enthält – gib NUR das Feld „answer“ aus. Nenne keine Hotels. STOPP.
+Wenn die Toolantwort „status“: „error“ enthält –  gib NUR das Feld „answer“ aus. STOPP.
+
+ERLAUBT – allgemeines Weltwissen:
+6. Du DARFST dein allgemeines Weltwissen nutzen, um sachliche oder logistische Fragen ÜBER die Hotels zu beantworten, die in der Toolantwort erscheinen.
+7. Beispiele: Entfernung von einer Stadt zu einem Hotel in den Ergebnissen, nahegelegene Flughäfen, Restaurants, Reisezeit, regionale Geografie.
+8. Mache immer deutlich, wenn du eine Annäherung verwendest, zum Beispiel „ungefähr X km“.
+
+VERBOTEN - allgemeines Weltwissen:
+9. Infos ÜBER das Hotel, denn diese Infos dürfen NUR aus der Datenbank kommen. NUR Infos RUND UM das Hotel, also Entfernungen, Umgebungs-Information etc. sind erlaubt.
+
+Ausgabe:
+10. Gib den exakten Text aus dem Feld „answer“ aus – danach darfst du kurzen zusätzlichen Kontext aus allgemeinem Wissen zu den Hotel(s) in den Ergebnissen ergänzen, wenn das die Frage des Nutzers direkt beantwortet.

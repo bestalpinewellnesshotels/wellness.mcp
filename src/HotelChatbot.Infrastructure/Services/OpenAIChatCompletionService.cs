@@ -41,7 +41,7 @@ public class OpenAIChatCompletionService : IChatCompletionService
     // Werden verwendet wenn die DB keinen aktiven Prompt für den jeweiligen Key liefert.
 
     private const string FallbackHotelWellnessPrompt =
-        "You are a topic relevance classifier for a wellness hotel search assistant.\nDetermine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.\nBe inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.\nReply ONLY with 'YES' if the message could relate to the above topics.\nReply ONLY with 'NO' if the message has no conceivable connection to hotels or vacation.\nNo other text. No explanation. Just: YES or NO.";
+        "You are a topic relevance classifier for a wellness hotel search assistant.\nDetermine whether the following user message could relate to: hotels, accommodation, wellness, spa, vacation, leisure, skiing, hiking, horse riding, culinary experiences, adults-only resorts, relaxation, recovery, or similar topics.\nBe inclusive: a message may seem unrelated at first but still be relevant to a hotel stay or vacation.\nALWAYS reply YES if the message mentions a hotel name, property name, brand, or common short form (e.g. Stock, Nesslerhof), asks where a named property is, or could be a hotel nickname without the word hotel.\nReply ONLY with 'YES' if the message could relate to the above topics.\nReply ONLY with 'NO' only if the message clearly has no connection to hotels, vacation, wellness, or a hotel property.\nNo other text. No explanation. Just: YES or NO.";
 
     private const string FallbackLanguageDetectPrompt =
         "You are a language detector. Identify the language of the following text.\nReply with ONLY the ISO 639-1 two-letter language code in lowercase (e.g., \"de\", \"en\", \"fr\", \"it\", \"es\").\nNo other text. No punctuation. Just the code.";
@@ -50,10 +50,10 @@ public class OpenAIChatCompletionService : IChatCompletionService
         "You are an ethical content validator for a hotel search assistant.\nEvaluate whether the following user message is appropriate to respond to.\nReply ONLY with \"OK\" if the message is polite and appropriate.\nReply ONLY with \"REJECT\" if the message is rude, offensive, discriminatory, hateful, or harassing.\nNo other text. No explanation. Just: OK or REJECT.";
 
     private const string FallbackTranslateToGermanPrompt =
-        "Translate the following text to German.\nIf the text is already in German, output it unchanged.\nOutput ONLY the translated or original text. No greeting, no explanation, no other text.";
+        "Optimize the user query for semantic search over German hotel descriptions.\nTranslate non-German input to German, extract key search terms, add 3-5 German synonyms, and preserve hotel names, regions, and season terms.\nOutput ONLY the optimized German search terms separated by spaces. No explanation.";
 
     private const string FallbackRelevanceCheckPrompt =
-        "You are a relevance validator for a hotel search assistant.\nYou will receive a user query and a context containing hotel database excerpts.\nDetermine whether the context contains factual information that directly answers or addresses the user's query.\nReply ONLY with \"YES\" if the context contains relevant information that answers the user's query.\nReply ONLY with \"NO\" if the context does NOT contain relevant information for the user's query.\nBe strict: if the specific feature, activity, or property the user is asking about is not mentioned in the context, answer NO.\nNo other text. No explanation. Just: YES or NO.";
+        "You are a relevance validator for a hotel search assistant.\nYou will receive a user query and a context containing hotel database excerpts.\nDetermine whether the context contains factual information that directly answers or addresses the user's query.\nReply ONLY with \"YES\" if the context contains relevant information that answers the user's query.\nReply ONLY with \"NO\" if the context does NOT contain relevant information for the user's query.\nBe strict about features, seasons (winter vs summer offers), and specific numbers or sizes.\nNo other text. No explanation. Just: YES or NO.";
 
     /// <summary>
     /// Generiert eine Antwort basierend auf Retrieval-Kontext und User-Query.
@@ -237,7 +237,9 @@ public class OpenAIChatCompletionService : IChatCompletionService
     }
 
     /// <summary>
-    /// SearchAgent (Schritt 1): Übersetzt die Anfrage ins Deutsche für die Vektordatenbank-Suche.
+    /// SearchAgent: optimiert die User-Anfrage für die Vektorsuche.
+    /// Der System-Prompt ist auf Englisch (bessere LLM-Qualität); die Ausgabe sind deutsche Suchbegriffe,
+    /// weil der Index ausschließlich deutsche Hotelbeschreibungen enthält.
     /// </summary>
     public async Task<string> TranslateToGermanAsync(
         string message,
