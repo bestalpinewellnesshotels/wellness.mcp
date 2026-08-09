@@ -11,7 +11,7 @@ Restart=always
 RestartSec=10
 Environment=NODE_ENV=production
 Environment=PORT={{MCP_PORT}}
-Environment=API_BASE_URL=http://127.0.0.1:{{API_PORT}}
+Environment=API_BASE_URL=https://mcp-api.bestalpine2.ms.mynet.at
 
 [Install]
 WantedBy=default.target
