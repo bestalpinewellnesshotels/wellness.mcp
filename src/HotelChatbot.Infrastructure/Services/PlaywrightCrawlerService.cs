@@ -18,17 +18,22 @@ public sealed class PlaywrightCrawlerService : IPlaywrightCrawlerService, IAsync
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<PlaywrightCrawlerService> _logger;
+    private readonly ILanguageDetector _languageDetector;
 
     private IPlaywright? _playwright;
     private IBrowser? _browser;
     private readonly SemaphoreSlim _browserLock = new(1, 1);
 
-    public PlaywrightCrawlerService(IHttpClientFactory httpClientFactory, ILogger<PlaywrightCrawlerService> logger)
+    public PlaywrightCrawlerService(
+        IHttpClientFactory httpClientFactory,
+        ILogger<PlaywrightCrawlerService> logger,
+        ILanguageDetector languageDetector)
     {
         _httpClient = httpClientFactory.CreateClient(nameof(PlaywrightCrawlerService));
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         _logger = logger;
+        _languageDetector = languageDetector;
     }
 
     // ---------------------------------------------------------------------------
@@ -501,32 +506,10 @@ public sealed class PlaywrightCrawlerService : IPlaywrightCrawlerService, IAsync
         return text.Trim();
     }
 
-    private static string DetectLanguage(string text)
-    {
-        var lower = text.ToLowerInvariant();
-        var de = new[] { "der", "die", "das", "und", "ist", "ein", "zu", "in", "für", "von" }
-            .Count(w => lower.Contains($" {w} "));
-        var en = new[] { "the", "and", "is", "to", "in", "for", "of", "with", "on", "at" }
-            .Count(w => lower.Contains($" {w} "));
-        return de > en ? "de" : "en";
-    }
+    private string DetectLanguage(string text) =>
+        CrawlerTextUtils.DetectLanguage(_languageDetector, text);
 
-    private static bool IsResourceFile(string url)
-    {
-        var exts = new[] { 
-            // Images
-            ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp", ".ico", ".tiff", ".tif",
-            // Videos
-            ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".mkv", ".m4v", ".mpg", ".mpeg",
-            // Audio
-            ".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac", ".wma",
-            // Documents & Archives
-            ".pdf", ".zip", ".rar", ".7z", ".tar", ".gz", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-            // Code & Data
-            ".css", ".js", ".xml", ".json", ".csv"
-        };
-        return exts.Any(e => url.EndsWith(e, StringComparison.OrdinalIgnoreCase));
-    }
+    private static bool IsResourceFile(string url) => CrawlerTextUtils.IsResourceFile(url);
 
     public async ValueTask DisposeAsync()
     {

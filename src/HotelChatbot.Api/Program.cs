@@ -45,12 +45,24 @@ builder.Services.AddHttpClient<ICrawlerService, WebCrawlerService>();
 builder.Services.AddHttpClient();  // IHttpClientFactory für PlaywrightCrawlerService
 
 // Domain Services
+builder.Services.AddSingleton<ILanguageDetector, HotelChatbot.Infrastructure.Classifiers.LanguageDetectionService>();
+builder.Services.AddSingleton<IIntentClassifier, HotelChatbot.Infrastructure.Classifiers.IntentClassifierService>();
+builder.Services.AddSingleton<IEthicalClassifier, HotelChatbot.Infrastructure.Classifiers.EthicalClassifierService>();
 builder.Services.AddSingleton<IChatCompletionService, OpenAIChatCompletionService>();
 builder.Services.AddScoped<ISpeechToTextService, SpeechToTextService>();
 builder.Services.AddScoped<ITextToSpeechService, TextToSpeechService>();
 builder.Services.AddSingleton<IEmbeddingService, AzureOpenAIEmbeddingService>();
-builder.Services.AddScoped<ICrawlerService, WebCrawlerService>();
-builder.Services.AddSingleton<IPlaywrightCrawlerService, PlaywrightCrawlerService>();
+// ICrawlerService: nur über AddHttpClient oben (kein doppeltes AddScoped)
+
+var enablePlaywright = builder.Configuration.GetValue("Crawl:EnablePlaywright", false);
+if (enablePlaywright)
+{
+    builder.Services.AddSingleton<IPlaywrightCrawlerService, PlaywrightCrawlerService>();
+}
+else
+{
+    builder.Services.AddSingleton<IPlaywrightCrawlerService, NullPlaywrightCrawlerService>();
+}
 
 // Infrastructure Services - PostgreSQL mit pgvector für persistente Speicherung
 builder.Services.AddSingleton<IVectorStore, PostgreSQLVectorStore>();

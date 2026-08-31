@@ -16,15 +16,18 @@ public class WebCrawlerService : ICrawlerService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<WebCrawlerService> _logger;
+    private readonly ILanguageDetector _languageDetector;
     private readonly HashSet<string> _visitedUrls = new();
     private readonly Queue<(string Url, int Depth)> _urlQueue = new();
 
     public WebCrawlerService(
         HttpClient httpClient,
-        ILogger<WebCrawlerService> logger)
+        ILogger<WebCrawlerService> logger,
+        ILanguageDetector languageDetector)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _languageDetector = languageDetector;
 
         // User-Agent setzen
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(
@@ -417,39 +420,15 @@ public class WebCrawlerService : ICrawlerService
     }
 
     /// <summary>
-    /// Einfache Sprach-Erkennung.
+    /// Spracherkennung über lokalen Klassifizierer.
     /// </summary>
-    private string DetectLanguage(string text)
-    {
-        var germanWords = new[] { "der", "die", "das", "und", "ist", "ein", "zu", "in", "für", "von" };
-        var englishWords = new[] { "the", "and", "is", "to", "in", "for", "of", "with", "on", "at" };
-
-        var lowerText = text.ToLowerInvariant();
-        var germanCount = germanWords.Count(w => lowerText.Contains($" {w} "));
-        var englishCount = englishWords.Count(w => lowerText.Contains($" {w} "));
-
-        return germanCount > englishCount ? "de" : "en";
-    }
+    private string DetectLanguage(string text) =>
+        CrawlerTextUtils.DetectLanguage(_languageDetector, text);
 
     /// <summary>
     /// Prüft ob URL eine Resource-Datei ist (Bilder, PDFs, etc.)
     /// </summary>
-    private bool IsResourceFile(string url)
-    {
-        var resourceExtensions = new[] { 
-            // Images
-            ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp", ".ico", ".tiff", ".tif",
-            // Videos
-            ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".mkv", ".m4v", ".mpg", ".mpeg",
-            // Audio
-            ".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac", ".wma",
-            // Documents & Archives
-            ".pdf", ".zip", ".rar", ".7z", ".tar", ".gz", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-            // Code & Data
-            ".css", ".js", ".xml", ".json", ".csv"
-        };
-        return resourceExtensions.Any(ext => url.EndsWith(ext, StringComparison.OrdinalIgnoreCase));
-    }
+    private bool IsResourceFile(string url) => CrawlerTextUtils.IsResourceFile(url);
 
     /// <summary>
     /// Crawlt eine Website basierend auf ihrer Sitemap.xml.

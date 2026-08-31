@@ -8,8 +8,8 @@ using System.Text.Json;
 namespace HotelChatbot.Application.Services;
 
 /// <summary>
-/// Service für Chat-Verarbeitung mit RAG (Retrieval-Augmented Generation).
-/// Implementiert die Kernlogik: Retrieval -> Kontext-Prüfung -> LLM-Antwort.
+/// Service für Chat-Verarbeitung mit RAG.
+/// Pipeline: Language → Ethical → Intent (lokal) → Search → Answer (LLM).
 /// </summary>
 public class ChatService
 {
@@ -20,6 +20,14 @@ public class ChatService
     private readonly SystemPromptService _systemPromptService;
     private readonly ILogger<ChatService> _logger;
     private readonly IQueryLogger _queryLogger;
+    private readonly ILanguageDetector _languageDetector;
+    private readonly IIntentClassifier _intentClassifier;
+    private readonly IEthicalClassifier _ethicalClassifier;
+
+    /// <summary>
+    /// Ab diesem Top-Similarity-Score wird der RelevanceAgent-LLM übersprungen.
+    /// </summary>
+    private const double RelevanceScoreSkipThreshold = 0.55;
 
     public ChatService(
         IVectorStore vectorStore,
@@ -28,7 +36,10 @@ public class ChatService
         IChatSessionRepository sessionRepository,
         SystemPromptService systemPromptService,
         ILogger<ChatService> logger,
-        IQueryLogger queryLogger)
+        IQueryLogger queryLogger,
+        ILanguageDetector languageDetector,
+        IIntentClassifier intentClassifier,
+        IEthicalClassifier ethicalClassifier)
     {
         _vectorStore = vectorStore;
         _chatCompletionService = chatCompletionService;
@@ -37,13 +48,15 @@ public class ChatService
         _systemPromptService = systemPromptService;
         _logger = logger;
         _queryLogger = queryLogger;
+        _languageDetector = languageDetector;
+        _intentClassifier = intentClassifier;
+        _ethicalClassifier = ethicalClassifier;
     }
 
 
 
     /// <summary>
-    /// Verarbeitet eine Hotel-Empfehlungs-Anfrage mit der 5-Agenten-Pipeline:
-    /// LanguageAgent → EthicalAgent → LogicAgent → SearchAgent → AnswerAgent
+    /// Hotel-Empfehlung: Language → Ethical → Intent → Search → Answer.
     /// </summary>
     public async Task<HotelRecommendationResponseDto> ProcessHotelRecommendationAsync(
         HotelRecommendationRequestDto request,
@@ -69,62 +82,41 @@ public class ChatService
             var conversationHistory = BuildConversationHistory(session);
             var previousHotelIds = LoadRecommendedHotelIds(session);
 
-            // ─── Step 1: LanguageAgent ────────────────────────────────────────────
-            string language;
-            if (!string.IsNullOrWhiteSpace(request.Language))
+            var gates = await RunSafetyGatesAsync(
+                request.Requirements,
+                request.Language,
+                logIntent: true,
+                ct);
+
+            if (gates.RejectReason == "ethical_reject")
             {
-                language = request.Language;
-                _logger.LogInformation("[LanguageAgent] Sprache vorgegeben: {Language}", language);
+                await SaveInteractionAsync(session, request.Requirements, gates.RejectMessage!, gates.Language, null, ct);
+                return BuildPipelineResponse(false, gates.RejectMessage!, "ethical_reject", request.Requirements, session.SessionId);
+            }
+
+            if (gates.RejectReason == "out_of_scope")
+            {
+                await SaveInteractionAsync(session, request.Requirements, gates.RejectMessage!, gates.Language, null, ct);
+                return BuildPipelineResponse(false, gates.RejectMessage!, "out_of_scope", request.Requirements, session.SessionId);
+            }
+
+            var language = gates.Language;
+
+            // ─── Search: Query für Vektorsuche ─────────────────────────────────────
+            // Bei Deutsch Original nutzen, sonst LLM-Rewrite.
+            string queryForSearch;
+            if (language.Equals("de", StringComparison.OrdinalIgnoreCase))
+            {
+                queryForSearch = request.Requirements;
+                _logger.LogInformation("[Search] Query bereits Deutsch – kein Translate-LLM");
             }
             else
             {
-                var langPrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.language_detect", ct);
-                var detected = await _chatCompletionService.DetectLanguageAsync(request.Requirements, langPrompt, ct);
-                language = NormalizeLanguageCode(detected);
-                _logger.LogInformation("[LanguageAgent] Sprache erkannt: {Language} (roh: {Raw})", language, detected);
+                var translatePrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.translate_to_german", ct);
+                queryForSearch = await _chatCompletionService.TranslateToGermanAsync(request.Requirements, translatePrompt, ct);
+                _logger.LogInformation("[Search] Query optimiert: Original='{Original}' → Suche='{Optimized}'",
+                    request.Requirements, queryForSearch);
             }
-
-            // ─── Step 2: EthicalAgent ─────────────────────────────────────────────
-            var ethicalPrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.ethical_check", ct);
-            var isEthical = await _chatCompletionService.IsEthicalAsync(request.Requirements, ethicalPrompt, ct);
-            _logger.LogInformation("[EthicalAgent] Ergebnis: {Result}", isEthical ? "OK" : "REJECT");
-
-            if (!isEthical)
-            {
-                var rejectMessage = language == "en"
-                    ? "Your message could not be processed. Please rephrase your question in a polite and respectful manner."
-                    : "Ihre Anfrage konnte nicht verarbeitet werden. Bitte formulieren Sie Ihre Frage höflich und respektvoll.";
-                await SaveInteractionAsync(session, request.Requirements, rejectMessage, language, null, ct);
-                return BuildPipelineResponse(false, rejectMessage, "ethical_reject", request.Requirements, session.SessionId);
-            }
-
-            // ─── Step 3: LogicAgent ───────────────────────────────────────────────
-            var logicPrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.logical_check", ct);
-            var isRelevant = await _chatCompletionService.IsHotelWellnessQueryAsync(request.Requirements, logicPrompt, ct);
-
-            await _queryLogger.LogIntentCheckAsync(
-                query:         request.Requirements,
-                language:      language,
-                promptKey:     "pipeline.logical_check",
-                promptContent: logicPrompt,
-                isHotelQuery:  isRelevant);
-
-            if (!isRelevant)
-            {
-                var outOfScopeMessage = language == "en"
-                    ? "This assistant exclusively provides information about BestWellness wellness hotels. Your request is outside the scope of this service."
-                    : "Dieser Assistent beantwortet ausschließlich Fragen zu BestWellness-Wellnesshotels. Ihre Anfrage liegt außerhalb des Themenbereichs.";
-                await SaveInteractionAsync(session, request.Requirements, outOfScopeMessage, language, null, ct);
-                return BuildPipelineResponse(false, outOfScopeMessage, "out_of_scope", request.Requirements, session.SessionId);
-            }
-
-            // ─── Step 4: SearchAgent ──────────────────────────────────────────────
-            // 4a. Query für Vektorsuche optimieren (Schlüsselbegriffe auf Deutsch — Index ist deutschsprachig).
-            //     System-Prompt auf Englisch, Ausgabe deutsche Suchbegriffe. Gilt für alle User-Sprachen.
-            var translatePrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.translate_to_german", ct);
-            var queryForSearch = await _chatCompletionService.TranslateToGermanAsync(request.Requirements, translatePrompt, ct);
-            _logger.LogInformation("[SearchAgent] Query optimiert: Original='{Original}' → Suche='{Optimized}'",
-                request.Requirements, queryForSearch);
 
             // 4b. Vektordatenbank durchsuchen
             var maxResults = await GetMaxResultsAsync(ct);
@@ -158,13 +150,13 @@ public class ChatService
                 }
             }
 
-            // Hotel-Details für gefundene Hotels laden
+            // Hotel-Details für gefundene Hotels laden (Batch, kein N+1)
             var hotelDetails = new Dictionary<string, Hotel>();
-            foreach (var hotelId in allResults.Keys)
+            var hotels = await _hotelRepository.GetByIdsAsync(allResults.Keys, ct);
+            foreach (var hotel in hotels)
             {
-                var hotel = await _hotelRepository.GetByIdAsync(hotelId, ct);
-                if (hotel?.IsActive == true)
-                    hotelDetails[hotelId] = hotel;
+                if (hotel.IsActive)
+                    hotelDetails[hotel.HotelId] = hotel;
             }
 
             // Nur Ergebnisse von aktiven, bekannten Hotels behalten
@@ -206,13 +198,29 @@ public class ChatService
             var context = BuildRecommendationContext(rankedResults, hotelDetails, maxResults * 3);
 
             // ─── Step 4c: RelevanceAgent ──────────────────────────────────────────
-            // Prüft ob der gefundene Kontext die Anfrage inhaltlich beantwortet.
-            // Verhindert, dass semantisch ähnliche aber inhaltlich unpassende Treffer
-            // zu einer irreführenden Hotelempfehlung führen.
-            var relevancePrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.relevance_check", ct);
-            var isContextRelevant = await _chatCompletionService.IsContextRelevantAsync(
-                request.Requirements, context, relevancePrompt, ct);
-            _logger.LogInformation("[RelevanceAgent] Ergebnis: {Result}", isContextRelevant ? "YES" : "NO");
+            // Bei klar hohen Similarity-Scores LLM überspringen (Performance).
+            var topScore = rankedResults.Values
+                .SelectMany(list => list)
+                .Select(r => r.Score)
+                .DefaultIfEmpty(0)
+                .Max();
+
+            bool isContextRelevant;
+            if (topScore >= RelevanceScoreSkipThreshold)
+            {
+                isContextRelevant = true;
+                _logger.LogInformation(
+                    "[RelevanceAgent] Übersprungen (TopScore={TopScore:0.00} >= {Threshold})",
+                    topScore, RelevanceScoreSkipThreshold);
+            }
+            else
+            {
+                var relevancePrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.relevance_check", ct);
+                isContextRelevant = await _chatCompletionService.IsContextRelevantAsync(
+                    request.Requirements, context, relevancePrompt, ct);
+                _logger.LogInformation("[RelevanceAgent] Ergebnis: {Result} (TopScore={TopScore:0.00})",
+                    isContextRelevant ? "YES" : "NO", topScore);
+            }
 
             if (!isContextRelevant)
             {
@@ -291,6 +299,64 @@ public class ChatService
         return 3; // Default
     }
 
+    private sealed record SafetyGateResult(string Language, string? RejectReason, string? RejectMessage);
+
+    /// <summary>
+    /// Gemeinsame Language-/Ethical-/Intent-Gates für Recommend und Hotel-Details.
+    /// </summary>
+    private async Task<SafetyGateResult> RunSafetyGatesAsync(
+        string text,
+        string? languageOverride,
+        bool logIntent,
+        CancellationToken ct)
+    {
+        string language;
+        if (!string.IsNullOrWhiteSpace(languageOverride))
+        {
+            language = NormalizeLanguageCode(languageOverride);
+            _logger.LogInformation("[Language] vorgegeben: {Language}", language);
+        }
+        else
+        {
+            language = NormalizeLanguageCode(_languageDetector.Detect(text));
+            _logger.LogInformation("[Language] erkannt: {Language}", language);
+        }
+
+        if (!_ethicalClassifier.IsEthical(text))
+        {
+            _logger.LogInformation("[Ethical] REJECT");
+            var msg = language == "en"
+                ? "Your message could not be processed. Please rephrase your question in a polite and respectful manner."
+                : "Ihre Anfrage konnte nicht verarbeitet werden. Bitte formulieren Sie Ihre Frage höflich und respektvoll.";
+            return new SafetyGateResult(language, "ethical_reject", msg);
+        }
+
+        _logger.LogInformation("[Ethical] OK");
+
+        var inScope = _intentClassifier.IsHotelWellnessQuery(text);
+        if (logIntent)
+        {
+            await _queryLogger.LogIntentCheckAsync(
+                query: text,
+                language: language,
+                promptKey: "classifier.intent",
+                promptContent: "local BinaryTextClassifier (in_scope/out_of_scope)",
+                isHotelQuery: inScope);
+        }
+
+        if (!inScope)
+        {
+            _logger.LogInformation("[Intent] out_of_scope");
+            var msg = language == "en"
+                ? "This assistant exclusively provides information about BestWellness wellness hotels. Your request is outside the scope of this service."
+                : "Dieser Assistent beantwortet ausschließlich Fragen zu BestWellness-Wellnesshotels. Ihre Anfrage liegt außerhalb des Themenbereichs.";
+            return new SafetyGateResult(language, "out_of_scope", msg);
+        }
+
+        _logger.LogInformation("[Intent] in_scope");
+        return new SafetyGateResult(language, null, null);
+    }
+
     /// <summary>
     /// Normalisiert den erkannten Sprachcode auf einen gültigen ISO-639-1 Code.
     /// Fallback: "de"
@@ -298,10 +364,9 @@ public class ChatService
     private static string NormalizeLanguageCode(string raw)
     {
         var code = raw.Trim().ToLower();
-        // Nur 2-Buchstaben-Codes akzeptieren
         if (code.Length == 2 && code.All(char.IsLetter))
             return code;
-        // Evtl. hat das LLM "de-AT" o.ä. geliefert
+        // z.B. "de-AT"
         if (code.Length >= 2)
             return code[..2];
         return "de";
@@ -368,18 +433,38 @@ public class ChatService
                 };
             }
 
-            string language;
-            if (!string.IsNullOrWhiteSpace(request.Language))
-                language = NormalizeLanguageCode(request.Language);
-            else
+            var gates = await RunSafetyGatesAsync(
+                request.Message,
+                request.Language,
+                logIntent: false,
+                ct);
+
+            if (gates.RejectReason is not null)
             {
-                var langPrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.language_detect", ct);
-                var detected = await _chatCompletionService.DetectLanguageAsync(request.Message, langPrompt, ct);
-                language = NormalizeLanguageCode(detected);
+                return new ChatResponseDto
+                {
+                    SessionId = request.SessionId ?? string.Empty,
+                    Message = gates.RejectMessage!,
+                    FinalAnswer = gates.RejectMessage!,
+                    ResponseType = gates.RejectReason,
+                    Success = false,
+                    Language = gates.Language,
+                    ErrorMessage = gates.RejectReason
+                };
             }
 
-            var translatePrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.translate_to_german", ct);
-            var queryForSearch = await _chatCompletionService.TranslateToGermanAsync(request.Message, translatePrompt, ct);
+            var language = gates.Language;
+
+            string queryForSearch;
+            if (language.Equals("de", StringComparison.OrdinalIgnoreCase))
+            {
+                queryForSearch = request.Message;
+            }
+            else
+            {
+                var translatePrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.translate_to_german", ct);
+                queryForSearch = await _chatCompletionService.TranslateToGermanAsync(request.Message, translatePrompt, ct);
+            }
 
             var chunks = await _vectorStore.SearchAsync(
                 hotel.HotelId, queryForSearch, 8, 0.40, ct);

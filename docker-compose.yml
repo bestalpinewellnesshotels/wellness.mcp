@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # ASP.NET Core API
   api:
     build:
       context: ./src
@@ -9,24 +8,28 @@ services:
     container_name: hotelchatbot-api
     ports:
       - "5001:8080"
+    env_file:
+      - .env
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:8080
-      # PostgreSQL Connection (externe Datenbank)
-      - ConnectionStrings__PostgreSQL=Host=dev-universe.net;Port=5432;Database=Bwchat;Username=bwchatuser;Password=0#PLsqi59Lsytj*j;SSL Mode=Prefer;Trust Server Certificate=true
-      # Azure OpenAI Configuration
-      - OpenAI__Endpoint=https://codeaustriaazureopenai.openai.azure.com/
-      - OpenAI__ApiKey=2UC511uZOtL2vXuRlL9E2UVyl0a3Lr0atQIrYIg30igllrnOoqb1JQQJ99CAACPV0roXJ3w3AAABACOGyOrD
-      - OpenAI__DeploymentName=gpt-4.1-mini
-      - OpenAI__EmbeddingDeploymentName=text-embedding-3-small
+      - Crawl__EnablePlaywright=false
+      - ConnectionStrings__PostgreSQL=${POSTGRES_CONNECTION}
+      - OpenAI__Endpoint=${OPENAI_ENDPOINT}
+      - OpenAI__ApiKey=${OPENAI_API_KEY}
+      - OpenAI__DeploymentName=${OPENAI_DEPLOYMENT:-gpt-4.1-mini}
+      - OpenAI__EmbeddingDeploymentName=${OPENAI_EMBEDDING_DEPLOYMENT:-text-embedding-3-small}
       - OpenAI__EmbeddingDimensions=1536
-      # Azure Speech Service
-      - SpeechService__SubscriptionKey=2b75e8a82f324bfcb14db13631e247b6
-      - SpeechService__ServiceRegion=germanywestcentral
-      # ElevenLabs TTS
-      - ElevenLabs__ApiKey=sk_651f9ec6eced052a3267cab0712cfdc704982ddd39ab36ff
-      - ElevenLabs__VoiceId=AegZIKlFnsDvogah9TeB
+      - SpeechService__SubscriptionKey=${SPEECH_KEY}
+      - SpeechService__ServiceRegion=${SPEECH_REGION:-germanywestcentral}
+      - ElevenLabs__ApiKey=${ELEVENLABS_API_KEY}
+      - ElevenLabs__VoiceId=${ELEVENLABS_VOICE_ID}
       - ElevenLabs__BaseUrl=https://api.elevenlabs.io/v1/text-to-speech/
+      - AdminAuth__AdminPassword=${ADMIN_PASSWORD}
+      - AdminAuth__HotelPassword=${HOTEL_PASSWORD}
+      - AdminAuth__TokenSecret=${ADMIN_TOKEN_SECRET}
+    mem_limit: 1g
+    cpus: 1.0
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/chat/health"]
@@ -37,20 +40,46 @@ services:
     networks:
       - chatbot-network
 
-  # Node.js MCP Server für ChatGPT
+  crawl-worker:
+    build:
+      context: ./src
+      dockerfile: HotelChatbot.Api/Dockerfile.crawl
+    container_name: hotelchatbot-crawl
+    ports:
+      - "5002:8080"
+    env_file:
+      - .env
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - Crawl__EnablePlaywright=true
+      - ConnectionStrings__PostgreSQL=${POSTGRES_CONNECTION}
+      - OpenAI__Endpoint=${OPENAI_ENDPOINT}
+      - OpenAI__ApiKey=${OPENAI_API_KEY}
+      - OpenAI__DeploymentName=${OPENAI_DEPLOYMENT:-gpt-4.1-mini}
+      - OpenAI__EmbeddingDeploymentName=${OPENAI_EMBEDDING_DEPLOYMENT:-text-embedding-3-small}
+      - OpenAI__EmbeddingDimensions=1536
+    mem_limit: 2g
+    cpus: 1.5
+    profiles:
+      - crawl
+    restart: unless-stopped
+    networks:
+      - chatbot-network
+
   mcp:
-    image: node:20-alpine
+    build:
+      context: ./chatgpt
+      dockerfile: Dockerfile
     container_name: hotelchatbot-mcp
-    working_dir: /app
     ports:
       - "3001:3001"
     environment:
       - PORT=3001
       - API_BASE_URL=http://api:8080
       - NODE_ENV=production
-    volumes:
-      - ./chatgpt:/app:ro
-    command: sh -c "npm install --production && node index.js"
+    mem_limit: 512m
+    cpus: 0.5
     depends_on:
       api:
         condition: service_healthy
@@ -59,6 +88,5 @@ services:
       - chatbot-network
 
 networks:
-  chatbot-network:
   chatbot-network:
     driver: bridge

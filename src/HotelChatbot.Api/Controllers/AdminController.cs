@@ -1,5 +1,6 @@
 using HotelChatbot.Domain.Entities;
 using HotelChatbot.Domain.Interfaces;
+using HotelChatbot.Infrastructure.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using Swashbuckle.AspNetCore.Annotations;
@@ -773,6 +774,22 @@ Erstellt für jede URL automatisch ein Hotel mit generierter ID (z.B. hotel_stoc
                                     scopedLogger.LogWarning("═══════════════════════════════════════════════════");
                                     // Behalte die bereits gespeicherten Chunks, kein Playwright-Retry
                                 }
+                                else if (scopedPlaywrightCrawlerService is NullPlaywrightCrawlerService)
+                                {
+                                    scopedLogger.LogError(
+                                        "Playwright-Fallback für {HotelId} abgebrochen: {Reason}. {Hint}",
+                                        hotelId, retryReason, NullPlaywrightCrawlerService.DisabledMessage);
+                                    jobStatus.Results.Add(new CrawlResult
+                                    {
+                                        Url = url,
+                                        HotelId = hotelId,
+                                        Success = false,
+                                        PagesProcessed = totalCrawled,
+                                        Error = NullPlaywrightCrawlerService.DisabledMessage
+                                    });
+                                    jobStatus.ProcessedHotels = i + 1;
+                                    continue;
+                                }
                                 else
                                 {
                                     scopedLogger.LogError("═══════════════════════════════════════════════════");
@@ -947,6 +964,15 @@ Sicherstellen, dass Playwright-Browser installiert sind (`playwright install chr
         [FromBody] CrawlMultipleHeadlessRequest request,
         CancellationToken cancellationToken)
     {
+        if (_playwrightCrawlerService is NullPlaywrightCrawlerService)
+        {
+            return StatusCode(503, new
+            {
+                error = NullPlaywrightCrawlerService.DisabledMessage,
+                hint = "POST crawl requests against the crawl-worker on port 5002"
+            });
+        }
+
         try
         {
             var results = new List<object>();
@@ -1095,10 +1121,23 @@ Sicherstellen, dass Playwright-Browser installiert sind (`playwright install chr
         try
         {
             var hotels = await _hotelRepository.GetAllAsync(cancellationToken);
-            
-            // ⚡ OPTIMIERUNG: Alle Hotels parallel analysieren statt sequenziell
-            var analysisTasks = hotels.Select(hotel => AnalyzeHotelAsync(hotel, cancellationToken));
-            var analysis = await Task.WhenAll(analysisTasks);
+
+            // Begrenzte Parallelität (max. 4), um HTTP-/Socket-Stampede zu vermeiden
+            var analysis = new object[hotels.Count];
+            using var gate = new SemaphoreSlim(4);
+            var tasks = hotels.Select(async (hotel, index) =>
+            {
+                await gate.WaitAsync(cancellationToken);
+                try
+                {
+                    analysis[index] = await AnalyzeHotelAsync(hotel, cancellationToken);
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            });
+            await Task.WhenAll(tasks);
 
             return Ok(new
             {
@@ -1561,12 +1600,29 @@ Sicherstellen, dass Playwright-Browser installiert sind (`playwright install chr
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult GetCrawlStatus(string jobId)
     {
+        PruneOldCrawlJobs();
+
         if (_crawlJobs.TryGetValue(jobId, out var status))
         {
             return Ok(status);
         }
         
         return NotFound(new { error = "Job nicht gefunden" });
+    }
+
+    private static void PruneOldCrawlJobs()
+    {
+        var cutoff = DateTime.UtcNow.AddHours(-2);
+        foreach (var kvp in _crawlJobs)
+        {
+            var job = kvp.Value;
+            var done = string.Equals(job.Status, "completed", StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(job.Status, "failed", StringComparison.OrdinalIgnoreCase);
+            if (done && job.CompletedAt.HasValue && job.CompletedAt.Value < cutoff)
+                _crawlJobs.TryRemove(kvp.Key, out _);
+            else if (done && !job.CompletedAt.HasValue && job.StartedAt < cutoff)
+                _crawlJobs.TryRemove(kvp.Key, out _);
+        }
     }
 
     /// <summary>
@@ -1609,6 +1665,20 @@ Sicherstellen, dass Playwright-Browser installiert sind (`playwright install chr
             
             if (needsPlaywright)
             {
+                if (_playwrightCrawlerService is NullPlaywrightCrawlerService)
+                {
+                    return Ok(new
+                    {
+                        url,
+                        timestamp = DateTime.UtcNow,
+                        webCrawler = webResult,
+                        fallbackTriggered = true,
+                        playwright = (object?)null,
+                        error = NullPlaywrightCrawlerService.DisabledMessage,
+                        recommendation = "Crawl-Worker mit Playwright nutzen (Port 5002)"
+                    });
+                }
+
                 _logger.LogWarning("🎭 PLAYWRIGHT-FALLBACK wird gestartet (WebCrawler: {Length} Zeichen)", 
                     webResult.contentLength);
                 

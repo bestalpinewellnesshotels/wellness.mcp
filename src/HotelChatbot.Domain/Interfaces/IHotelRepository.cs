@@ -6,6 +6,7 @@ namespace HotelChatbot.Domain.Interfaces;
 public interface IHotelRepository
 {
     Task<Entities.Hotel?> GetByIdAsync(string hotelId, CancellationToken cancellationToken = default);
+    Task<List<Entities.Hotel>> GetByIdsAsync(IEnumerable<string> hotelIds, CancellationToken cancellationToken = default);
     Task<Entities.Hotel?> GetByDomainAsync(string domain, CancellationToken cancellationToken = default);
     Task<List<Entities.Hotel>> GetAllAsync(CancellationToken cancellationToken = default);
     Task AddAsync(Entities.Hotel hotel, CancellationToken cancellationToken = default);

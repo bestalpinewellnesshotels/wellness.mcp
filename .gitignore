@@ -18,6 +18,7 @@ dist/
 **/*.Production.json
 
 # Secrets
+.env
 *.key
 *.pem
 secrets.json

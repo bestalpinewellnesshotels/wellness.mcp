@@ -113,6 +113,30 @@ public class PostgreSQLHotelRepository : IHotelRepository
         return null;
     }
 
+    public async Task<List<Hotel>> GetByIdsAsync(IEnumerable<string> hotelIds, CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        var ids = hotelIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToList();
+        if (ids.Count == 0)
+            return new List<Hotel>();
+
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync(cancellationToken);
+
+        var sql = $"SELECT {SelectColumns} FROM hotels WHERE hotel_id = ANY($1);";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue(ids.ToArray());
+
+        var hotels = new List<Hotel>();
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            hotels.Add(MapHotel(reader));
+
+        return hotels;
+    }
+
     public async Task<Hotel?> GetByDomainAsync(string domain, CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken);

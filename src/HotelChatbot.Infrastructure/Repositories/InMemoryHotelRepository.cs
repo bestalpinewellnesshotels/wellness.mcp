@@ -18,6 +18,13 @@ public class InMemoryHotelRepository : IHotelRepository
         return Task.FromResult(hotel);
     }
 
+    public Task<List<Hotel>> GetByIdsAsync(IEnumerable<string> hotelIds, CancellationToken cancellationToken = default)
+    {
+        var set = hotelIds.ToHashSet(StringComparer.Ordinal);
+        var result = _hotels.Values.Where(h => set.Contains(h.HotelId)).ToList();
+        return Task.FromResult(result);
+    }
+
     public Task<Hotel?> GetByDomainAsync(string domain, CancellationToken cancellationToken = default)
     {
         var hotel = _hotels.Values.FirstOrDefault(h => 

@@ -1,4 +1,4 @@
-# Build Stage
+# Crawl worker image: same API binary + Playwright/Chromium
 FROM mcr.microsoft.com/dotnet/sdk:10.0-preview AS build
 WORKDIR /src
 
@@ -8,33 +8,49 @@ COPY ["HotelChatbot.Domain/HotelChatbot.Domain.csproj", "HotelChatbot.Domain/"]
 COPY ["HotelChatbot.Infrastructure/HotelChatbot.Infrastructure.csproj", "HotelChatbot.Infrastructure/"]
 
 RUN dotnet restore "HotelChatbot.Api/HotelChatbot.Api.csproj"
-
 COPY . .
-
 WORKDIR "/src/HotelChatbot.Api"
-RUN dotnet build "HotelChatbot.Api.csproj" -c Release -o /app/build
-
-FROM build AS publish
 RUN dotnet publish "HotelChatbot.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
-# Slim runtime without Playwright/Chromium (chat API)
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview AS final
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libdbus-1-3 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpango-1.0-0 \
+    libcairo2 \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=publish /app/publish .
+COPY --from=build /app/publish .
+
+RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright dotnet exec HotelChatbot.Api.dll playwright.ps1 install chromium --with-deps || \
+    (wget -q -O- https://playwright.azureedge.net/builds/chromium/1161/chromium-linux.zip | \
+     busybox unzip -q -d /ms-playwright/chromium-1161 -) || true
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV ASPNETCORE_URLS=http://+:8080
+ENV ASPNETCORE_ENVIRONMENT=Production
+ENV Crawl__EnablePlaywright=true
 
 EXPOSE 8080
 
-ENV ASPNETCORE_URLS=http://+:8080
-ENV ASPNETCORE_ENVIRONMENT=Production
-ENV Crawl__EnablePlaywright=false
-
-HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:8080/api/chat/health || exit 1
 
 ENTRYPOINT ["dotnet", "HotelChatbot.Api.dll"]
