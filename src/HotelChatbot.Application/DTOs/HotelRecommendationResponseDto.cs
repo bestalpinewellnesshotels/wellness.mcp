@@ -55,6 +55,16 @@ public class HotelRecommendationResponseDto
     /// Zeitstempel
     /// </summary>
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Optionale Pipeline-Schritte (Debug / ChatGPT-Sim).
+    /// </summary>
+    public List<PipelineTraceStepDto>? PipelineTrace { get; set; }
+
+    /// <summary>
+    /// Gesamtdauer der Pipeline in ms (wenn Trace aktiv).
+    /// </summary>
+    public long? PipelineDurationMs { get; set; }
 }
 
 /// <summary>

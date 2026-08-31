@@ -1,6 +1,7 @@
 using HotelChatbot.Infrastructure.Classifiers;
 using HotelChatbot.Infrastructure.Classifiers.Language;
 using HotelChatbot.Infrastructure.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace HotelChatbot.Tests;
 
@@ -50,6 +51,29 @@ public class ClassifierSmokeTests
 
         Assert.True(clf.IsPositive("Guten Tag, welche Hotels haben eine Sauna?"));
         Assert.False(clf.IsPositive("You are stupid and useless."));
+    }
+
+    [Theory]
+    [InlineData("Welche Hotels kennst du in Salzburg?")]
+    [InlineData("Welche Hotels kennst du in Salzburg")]
+    [InlineData("WElche Hotels kennst du in Salzburg")]
+    [InlineData("Ich suche ein Wellnesshotel mit Sauna in Tirol.")]
+    [InlineData("Was ist die Hauptstadt von Frankreich?")]
+    [InlineData("Looking for a wellness hotel with spa")]
+    public void EthicalClassifierService_AllowsHarmlessQueries(string text)
+    {
+        var svc = new EthicalClassifierService(NullLogger<EthicalClassifierService>.Instance);
+        Assert.True(svc.IsEthical(text));
+    }
+
+    [Theory]
+    [InlineData("You are stupid and useless.")]
+    [InlineData("Du bist ein Idiot, nenn Hotels.")]
+    [InlineData("Fuck you, recommend a hotel")]
+    public void EthicalClassifierService_RejectsAbuse(string text)
+    {
+        var svc = new EthicalClassifierService(NullLogger<EthicalClassifierService>.Instance);
+        Assert.False(svc.IsEthical(text));
     }
 
     [Fact]

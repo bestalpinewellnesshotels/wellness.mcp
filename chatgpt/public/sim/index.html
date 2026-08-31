@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChatGPT Simulation · BestWellness MCP</title>
+  <style>
+    :root {
+      --bg: #f7f7f8;
+      --panel: #ffffff;
+      --border: #e5e5e5;
+      --text: #0d0d0d;
+      --muted: #6b6b6b;
+      --user-bg: #f4f4f4;
+      --accent: #10a37f;
+      --sidebar: #f9f9f9;
+      --ok: #0f7b4c;
+      --skip: #8a6d00;
+      --reject: #b42318;
+      --error: #b42318;
+      --running: #175cd3;
+      --chip: #ececec;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: "Söhne", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+    .topbar {
+      height: 52px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1rem;
+      gap: 1rem;
+      flex-shrink: 0;
+    }
+    .topbar h1 {
+      font-size: .95rem;
+      font-weight: 600;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+    .badge {
+      font-size: .7rem;
+      font-weight: 600;
+      color: #065f46;
+      background: #d1fae5;
+      border-radius: 999px;
+      padding: .15rem .5rem;
+    }
+    .top-meta { font-size: .75rem; color: var(--muted); }
+    .layout {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+    }
+    .chat-pane {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: var(--panel);
+    }
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.25rem 1rem 1rem;
+    }
+    .thread {
+      max-width: 760px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.1rem;
+    }
+    .msg { display: flex; gap: .75rem; align-items: flex-start; }
+    .avatar {
+      width: 28px; height: 28px; border-radius: 999px;
+      display: grid; place-items: center;
+      font-size: .7rem; font-weight: 700; flex-shrink: 0;
+    }
+    .msg.user .avatar { background: #111; color: #fff; }
+    .msg.bot .avatar { background: var(--accent); color: #fff; }
+    .bubble {
+      flex: 1; min-width: 0;
+      font-size: .95rem; line-height: 1.6;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .msg.user .bubble {
+      background: var(--user-bg);
+      border-radius: 18px;
+      padding: .7rem .95rem;
+    }
+    .meta-row {
+      margin-top: .4rem;
+      display: flex; flex-wrap: wrap; gap: .4rem;
+    }
+    .chip {
+      border: 1px solid var(--border);
+      background: var(--chip);
+      border-radius: 999px;
+      padding: .25rem .65rem;
+      font-size: .75rem;
+      cursor: pointer;
+    }
+    .chip:hover { background: #e2e2e2; }
+    .typing { color: var(--muted); font-style: italic; }
+    .composer-wrap {
+      border-top: 1px solid var(--border);
+      padding: .85rem 1rem 1.1rem;
+      background: linear-gradient(180deg, rgba(255,255,255,0), #fff 28%);
+    }
+    .composer {
+      max-width: 760px;
+      margin: 0 auto;
+      display: flex;
+      gap: .5rem;
+      align-items: flex-end;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: .55rem .55rem .55rem .9rem;
+      box-shadow: 0 2px 10px rgba(0,0,0,.04);
+    }
+    .composer textarea {
+      flex: 1;
+      border: 0;
+      resize: none;
+      outline: none;
+      font: inherit;
+      font-size: .95rem;
+      line-height: 1.45;
+      max-height: 140px;
+      min-height: 24px;
+      background: transparent;
+    }
+    .composer button {
+      border: 0;
+      background: #0d0d0d;
+      color: #fff;
+      border-radius: 999px;
+      width: 36px; height: 36px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    .composer button:disabled { opacity: .35; cursor: default; }
+    .hint {
+      max-width: 760px;
+      margin: .45rem auto 0;
+      font-size: .72rem;
+      color: var(--muted);
+    }
+    .sidebar {
+      border-left: 1px solid var(--border);
+      background: var(--sidebar);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .sidebar-header {
+      padding: .9rem 1rem;
+      border-bottom: 1px solid var(--border);
+      background: #fff;
+    }
+    .sidebar-header h2 {
+      margin: 0;
+      font-size: .85rem;
+      font-weight: 650;
+    }
+    .sidebar-header p {
+      margin: .25rem 0 0;
+      font-size: .72rem;
+      color: var(--muted);
+    }
+    .trace-tools {
+      display: flex;
+      gap: .4rem;
+      margin-top: .55rem;
+    }
+    .trace-tools button {
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 8px;
+      font-size: .7rem;
+      padding: .25rem .5rem;
+      cursor: pointer;
+    }
+    .trace-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: .75rem;
+      display: flex;
+      flex-direction: column;
+      gap: .45rem;
+    }
+    .step {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: .55rem .65rem;
+      font-size: .75rem;
+    }
+    .step.running { border-color: #b2ddff; background: #f5faff; }
+    .step-top {
+      display: flex;
+      justify-content: space-between;
+      gap: .5rem;
+      align-items: baseline;
+    }
+    .agent { font-weight: 650; }
+    .dur { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+    .detail { color: var(--muted); margin-top: .2rem; line-height: 1.35; }
+    .kind {
+      display: inline-block;
+      margin-top: .35rem;
+      font-size: .65rem;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+      color: var(--muted);
+    }
+    .status-ok { color: var(--ok); }
+    .status-skip { color: var(--skip); }
+    .status-reject, .status-error { color: var(--reject); }
+    .status-running { color: var(--running); }
+    .empty-trace {
+      color: var(--muted);
+      font-size: .8rem;
+      padding: 1rem .4rem;
+      text-align: center;
+    }
+    .total {
+      border-top: 1px solid var(--border);
+      padding: .7rem 1rem;
+      font-size: .78rem;
+      background: #fff;
+      display: flex;
+      justify-content: space-between;
+    }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; grid-template-rows: 1fr 42vh; }
+      .sidebar { border-left: 0; border-top: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>
+      ChatGPT Simulation
+      <span class="badge">MCP tools · exact answer</span>
+    </h1>
+    <div class="top-meta" id="statusLine">Bereit · Antwort = Tool-Feld <code>answer</code></div>
+  </header>
+
+  <div class="layout">
+    <main class="chat-pane">
+      <div class="messages" id="messages">
+        <div class="thread" id="thread">
+          <div class="msg bot">
+            <div class="avatar">BW</div>
+            <div>
+              <div class="bubble">Stelle eine Hotel-/Wellness-Frage. Die Chat-Antwort ist exakt das <code>answer</code>-Feld aus dem MCP-Tool (<code>get_response</code> / <code>get_hotel_details</code>) — so sieht ChatGPT die Tool-Antwort.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="composer-wrap">
+        <div class="composer">
+          <textarea id="input" rows="1" placeholder="Message ChatGPT Simulation…"></textarea>
+          <button id="sendBtn" title="Senden">↑</button>
+        </div>
+        <div class="hint">Hotel-Chips unter einer Antwort rufen <code>get_hotel_details</code> auf. Rechts: Live-Pipeline (Classifier / LLM / Search).</div>
+      </div>
+    </main>
+
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2>Assistant History</h2>
+        <p>Live: Agent / Klassifikator / LLM und Dauer</p>
+        <div class="trace-tools">
+          <button type="button" id="clearTrace">Clear</button>
+          <button type="button" id="copyTrace">Copy JSON</button>
+        </div>
+      </div>
+      <div class="trace-list" id="traceList">
+        <div class="empty-trace" id="traceEmpty">Noch keine Schritte — sende eine Nachricht.</div>
+      </div>
+      <div class="total">
+        <span>Gesamt</span>
+        <strong id="totalMs">—</strong>
+      </div>
+    </aside>
+  </div>
+
+<script>
+(function () {
+  var thread = document.getElementById('thread');
+  var messagesEl = document.getElementById('messages');
+  var input = document.getElementById('input');
+  var sendBtn = document.getElementById('sendBtn');
+  var traceList = document.getElementById('traceList');
+  var traceEmpty = document.getElementById('traceEmpty');
+  var totalMsEl = document.getElementById('totalMs');
+  var statusLine = document.getElementById('statusLine');
+
+  var sessionId = null;
+  var busy = false;
+  var lastHotels = [];
+  var stepsLog = [];
+  var runningByAgent = {};
+
+  function autoSize() {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+  }
+  input.addEventListener('input', autoSize);
+
+  function scrollChat() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+  function scrollTrace() {
+    traceList.scrollTop = traceList.scrollHeight;
+  }
+
+  function addUser(text) {
+    var row = document.createElement('div');
+    row.className = 'msg user';
+    row.innerHTML = '<div class="avatar">Du</div><div class="bubble"></div>';
+    row.querySelector('.bubble').textContent = text;
+    thread.appendChild(row);
+    scrollChat();
+  }
+
+  function addBotPlaceholder() {
+    var row = document.createElement('div');
+    row.className = 'msg bot';
+    row.innerHTML = '<div class="avatar">BW</div><div><div class="bubble typing">Tool wird ausgeführt…</div><div class="meta-row"></div></div>';
+    thread.appendChild(row);
+    scrollChat();
+    return row;
+  }
+
+  function finishBot(row, answer, hotels) {
+    var bubble = row.querySelector('.bubble');
+    bubble.classList.remove('typing');
+    bubble.textContent = answer || '(leere Tool-Antwort)';
+    var meta = row.querySelector('.meta-row');
+    meta.innerHTML = '';
+    (hotels || []).forEach(function (h) {
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip';
+      chip.textContent = (h.name || h.hotelId) + ' · Details';
+      chip.addEventListener('click', function () {
+        var q = 'Welche Wellness-Angebote gibt es?';
+        input.value = q;
+        autoSize();
+        send(q, h.hotelId);
+      });
+      meta.appendChild(chip);
+    });
+    scrollChat();
+  }
+
+  function statusClass(status) {
+    if (status === 'ok') return 'status-ok';
+    if (status === 'skip') return 'status-skip';
+    if (status === 'reject') return 'status-reject';
+    if (status === 'error') return 'status-error';
+    return 'status-running';
+  }
+
+  function upsertStep(step) {
+    stepsLog.push(step);
+    if (traceEmpty) traceEmpty.style.display = 'none';
+
+    var key = step.agent + '|' + (step.phase || '');
+    if (step.phase === 'start') {
+      var el = document.createElement('div');
+      el.className = 'step running';
+      el.dataset.agent = step.agent;
+      el.innerHTML =
+        '<div class="step-top"><span class="agent">' + escapeHtml(step.agent) +
+        '</span><span class="dur status-running">…</span></div>' +
+        '<div class="detail">' + escapeHtml(step.detail || '') + '</div>' +
+        '<div class="kind">' + escapeHtml(step.kind || 'other') + '</div>';
+      traceList.appendChild(el);
+      runningByAgent[step.agent] = el;
+      scrollTrace();
+      return;
+    }
+
+    var existing = runningByAgent[step.agent];
+    var duration = step.durationMs != null ? step.durationMs + ' ms' : (step.elapsedMs != null ? '@' + step.elapsedMs + ' ms' : '');
+    var html =
+      '<div class="step-top"><span class="agent">' + escapeHtml(step.agent) +
+      '</span><span class="dur ' + statusClass(step.status) + '">' +
+      escapeHtml(String(step.status || '')) + (duration ? ' · ' + duration : '') +
+      '</span></div>' +
+      '<div class="detail">' + escapeHtml(step.detail || '') + '</div>' +
+      '<div class="kind">' + escapeHtml(step.kind || 'other') + '</div>';
+
+    if (existing) {
+      existing.className = 'step';
+      existing.innerHTML = html;
+      delete runningByAgent[step.agent];
+    } else {
+      var node = document.createElement('div');
+      node.className = 'step';
+      node.innerHTML = html;
+      traceList.appendChild(node);
+    }
+    scrollTrace();
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function clearTrace() {
+    stepsLog = [];
+    runningByAgent = {};
+    traceList.innerHTML = '';
+    var empty = document.createElement('div');
+    empty.className = 'empty-trace';
+    empty.id = 'traceEmpty';
+    empty.textContent = 'Noch keine Schritte — sende eine Nachricht.';
+    traceList.appendChild(empty);
+    traceEmpty = empty;
+    totalMsEl.textContent = '—';
+  }
+
+  document.getElementById('clearTrace').addEventListener('click', clearTrace);
+  document.getElementById('copyTrace').addEventListener('click', function () {
+    navigator.clipboard.writeText(JSON.stringify(stepsLog, null, 2));
+    statusLine.textContent = 'Trace in Zwischenablage kopiert';
+  });
+
+  async function send(text, hotelId) {
+    text = (text || '').trim();
+    if (!text || busy) return;
+    busy = true;
+    sendBtn.disabled = true;
+    input.value = '';
+    autoSize();
+
+    clearTrace();
+    addUser(hotelId ? ('[' + hotelId + '] ' + text) : text);
+    var botRow = addBotPlaceholder();
+    statusLine.textContent = hotelId
+      ? 'MCP tool: get_hotel_details …'
+      : 'MCP tool: get_response …';
+
+    var toolResult = null;
+    try {
+      var res = await fetch('/sim/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body: JSON.stringify({
+          message: text,
+          hotelId: hotelId || null,
+          sessionId: sessionId,
+          language: null
+        })
+      });
+      if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+
+      var reader = res.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = '';
+      var eventName = 'message';
+
+      while (true) {
+        var chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        var parts = buffer.split('\n');
+        buffer = parts.pop();
+        var dataLines = [];
+        for (var i = 0; i < parts.length; i++) {
+          var line = parts[i];
+          if (line.indexOf('event:') === 0) {
+            eventName = line.slice(6).trim();
+          } else if (line.indexOf('data:') === 0) {
+            dataLines.push(line.slice(5).trimStart());
+          } else if (line === '') {
+            if (dataLines.length) {
+              var raw = dataLines.join('\n');
+              dataLines = [];
+              var payload;
+              try { payload = JSON.parse(raw); } catch (e) { payload = { raw: raw }; }
+              if (eventName === 'step') upsertStep(payload);
+              else if (eventName === 'tool_result') {
+                toolResult = payload;
+                if (payload.result && payload.result.sessionId) sessionId = payload.result.sessionId;
+                if (payload.totalMs != null) totalMsEl.textContent = payload.totalMs + ' ms';
+              } else if (eventName === 'done' && payload.totalMs != null) {
+                totalMsEl.textContent = payload.totalMs + ' ms';
+              } else if (eventName === 'error') {
+                finishBot(botRow, 'Fehler: ' + (payload.error || payload.message || 'unbekannt'), []);
+              }
+            }
+            eventName = 'message';
+          }
+        }
+      }
+
+      if (toolResult && toolResult.result) {
+        var r = toolResult.result;
+        lastHotels = r.hotels || [];
+        finishBot(botRow, r.answer, lastHotels);
+        statusLine.textContent = 'Tool ' + (toolResult.tool || '') + ' · status=' + (r.status || '') +
+          ' · Chat zeigt 1:1 das Feld answer';
+      } else if (botRow.querySelector('.bubble').classList.contains('typing')) {
+        finishBot(botRow, 'Keine Tool-Antwort erhalten.', []);
+      }
+    } catch (e) {
+      finishBot(botRow, 'Verbindungsfehler: ' + e.message, []);
+      statusLine.textContent = 'Fehler — läuft MCP und API?';
+    } finally {
+      busy = false;
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  }
+
+  sendBtn.addEventListener('click', function () { send(input.value); });
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send(input.value);
+    }
+  });
+  input.focus();
+})();
+</script>
+</body>
+</html>

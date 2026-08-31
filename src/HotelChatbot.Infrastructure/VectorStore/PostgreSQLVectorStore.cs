@@ -232,34 +232,37 @@ public class PostgreSQLVectorStore : IVectorStore
 
         var resultsByHotel = new Dictionary<string, List<(ContentChunk Chunk, double Score)>>(StringComparer.Ordinal);
 
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        // Reader muss geschlossen sein, bevor dieselbe Connection eine zweite Query ausführt.
+        await using (var reader = await cmd.ExecuteReaderAsync(cancellationToken))
         {
-            var similarity = reader.GetDouble(7);
-            if (similarity < minScore)
-                continue;
-
-            var hotelId = reader.GetString(1);
-            if (!resultsByHotel.TryGetValue(hotelId, out var list))
+            while (await reader.ReadAsync(cancellationToken))
             {
-                list = new List<(ContentChunk, double)>(topK);
-                resultsByHotel[hotelId] = list;
+                var similarity = reader.GetDouble(7);
+                if (similarity < minScore)
+                    continue;
+
+                var hotelId = reader.GetString(1);
+                if (!resultsByHotel.TryGetValue(hotelId, out var list))
+                {
+                    list = new List<(ContentChunk, double)>(topK);
+                    resultsByHotel[hotelId] = list;
+                }
+
+                if (list.Count >= topK)
+                    continue;
+
+                list.Add((new ContentChunk
+                {
+                    ChunkId = reader.GetString(0),
+                    HotelId = hotelId,
+                    SourceUrl = reader.GetString(2),
+                    Title = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    Content = reader.GetString(4),
+                    Language = reader.GetString(5),
+                    CrawledAt = reader.GetDateTime(6),
+                    IsActive = true
+                }, similarity));
             }
-
-            if (list.Count >= topK)
-                continue;
-
-            list.Add((new ContentChunk
-            {
-                ChunkId = reader.GetString(0),
-                HotelId = hotelId,
-                SourceUrl = reader.GetString(2),
-                Title = reader.IsDBNull(3) ? null : reader.GetString(3),
-                Content = reader.GetString(4),
-                Language = reader.GetString(5),
-                CrawledAt = reader.GetDateTime(6),
-                IsActive = true
-            }, similarity));
         }
 
         // Hotels ohne Treffer in der globalen Top-N: gezielte Nachfüllung (max. 20 Hotels)

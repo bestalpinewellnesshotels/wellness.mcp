@@ -65,4 +65,14 @@ public class ChatResponseDto
     /// Quellen-URLs aus dem redaktionellen Index
     /// </summary>
     public List<string> Sources { get; set; } = new();
+
+    /// <summary>
+    /// Optionale Pipeline-Schritte (Debug / ChatGPT-Sim).
+    /// </summary>
+    public List<PipelineTraceStepDto>? PipelineTrace { get; set; }
+
+    /// <summary>
+    /// Gesamtdauer der Pipeline in ms (wenn Trace aktiv).
+    /// </summary>
+    public long? PipelineDurationMs { get; set; }
 }

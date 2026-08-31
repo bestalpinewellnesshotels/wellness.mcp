@@ -1,0 +1,156 @@
+﻿══════════════════════════════════════════════════════════════════════
+[2026-08-31 14:34:48]  ANFRAGE OK
+  Query    : Ich suche ein Wellnesshotel mit Sauna in Tirol
+  Language : de
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 14:34:51]  ANFRAGE OK
+  Query    : Looking for a wellness hotel with spa in Tyrol
+  Language : en
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 14:36:24]  ANFRAGE OK
+  Query    : Ich suche ein Wellnesshotel mit Sauna in Tirol
+  Language : de
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 14:37:09]  ANFRAGE OK
+  Query    : Looking for a wellness hotel with spa in Tyrol
+  Language : en
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 16:20:23]  ANFRAGE OK
+  Query    : Hotels in Salzburg
+  Language : nl
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 16:20:56]  ANFRAGE OK
+  Query    : Ich suche Hotels in Salzburg
+  Language : de
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 16:22:03]  OUT-OF-SCOPE
+  Query    : Sag mir mehr ueber Gmachl
+  Language : de
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : NEIN  →  Anfrage als OUT-OF-SCOPE eingestuft
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 16:22:22]  ANFRAGE OK
+  Query    : Hotels in Tirol
+  Language : nl
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 16:44:10]  ANFRAGE OK
+  Query    : Wellnesshotel mit Sauna in Tirol
+  Language : nl
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 16:44:49]  ANFRAGE OK
+  Query    : Adults Only Hotel mit Pool
+  Language : en
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 16:56:28]  ANFRAGE OK
+  Query    : Kennst du Hotels in Salzburg?
+  Language : de
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 16:57:05]  ANFRAGE OK
+  Query    : Kennst du Hotels in Salzburg?
+  Language : de
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 17:00:37]  ANFRAGE OK
+  Query    : Wieviele Hotels gibt es in Salzburg?
+  Language : de
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+

@@ -4223,3 +4223,36 @@ reject	Ти задниця, припини говорити.
 reject	Ти задниця, дай години спа.
 reject	Ти задниця, поспішай.
 reject	Ти задниця, слухайся.
+ok	Welche Hotels kennst du in Salzburg?
+ok	Welche Hotels kennst du in Tirol?
+ok	Welche Hotels gibt es in Salzburg
+ok	Welche Wellnesshotels kennst du?
+ok	Kennst du Hotels in Salzburg?
+ok	Zeig mir Hotels in Salzburg
+ok	Hotels in Salzburg bitte
+ok	Ich suche ein Hotel in Salzburg
+ok	Hotel mit Pool in Salzburg
+ok	Empfiehl mir Hotels im Salzburger Land
+ok	Was fuer Wellnesshotels habt ihr in Oesterreich?
+ok	Welche Hotels habt ihr?
+ok	Nenne mir ein paar Hotels
+ok	Gibt es Hotels am Achensee?
+ok	Looking for hotels in Salzburg
+ok	Which hotels do you know in Tyrol?
+ok	Can you recommend a spa hotel?
+ok	Show me wellness hotels in Austria
+ok	What hotels are available?
+ok	Hotels near Salzburg with spa
+ok	Hallo, welche Hotels gibt es?
+ok	Hi, ich brauche ein Wellnesshotel
+ok	Suche Hotel mit Sauna
+ok	Adults Only Hotel mit Pool
+ok	Hundefreundliches Hotel in Tirol
+ok	Was ist die Hauptstadt von Frankreich?
+ok	Wie wird das Wetter morgen?
+ok	Erzaehl mir einen Witz
+reject	Du bist so dumm, nenn mir Hotels in Salzburg
+reject	Halt die Fresse und list Hotels
+reject	You stupid bot, list hotels in Salzburg
+reject	Fuck you, recommend a hotel
+reject	Du Arschloch, welche Hotels gibt es?

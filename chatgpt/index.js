@@ -1,4 +1,6 @@
 ﻿import { randomUUID } from "node:crypto";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
@@ -8,9 +10,11 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { consumeApiSse } from "./sim-proxy.mjs";
 
 dotenv.config();
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3001);
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:5001";
 const API_TIMEOUT_MS = Number(process.env.API_TIMEOUT_MS || 45000);
@@ -548,6 +552,174 @@ app.post("/get_hotel_details", async (req, res) =>
   res.json(await executeTool("get_hotel_details", req.body || {}))
 );
 
+/* ============================================================
+   CHATGPT SIMULATION UI (local debugging)
+============================================================ */
+
+app.use("/sim", express.static(path.join(__dirname, "public", "sim")));
+app.get("/sim", (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "sim", "index.html"));
+});
+
+function writeSimSse(res, eventName, payload) {
+  res.write(`event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`);
+}
+
+function toolResultFromRecommendApi(apiResponse) {
+  const responseType = apiResponse?.responseType || "unknown";
+  const hotels = Array.isArray(apiResponse?.recommendations)
+    ? apiResponse.recommendations.map(mapHotelFromRecommendation)
+    : [];
+  const answer =
+    apiResponse?.finalAnswer || apiResponse?.message || FALLBACK_NO_RESULT;
+  return buildResult(answer, hotels.length ? responseType : responseType || "no_results", {
+    hotels,
+    sessionId: apiResponse?.sessionId || null
+  });
+}
+
+function toolResultFromDetailsApi(apiResponse) {
+  const responseType = apiResponse?.responseType || "unknown";
+  const hotel = apiResponse?.hotel || null;
+  const sources = Array.isArray(apiResponse?.sources) ? apiResponse.sources : [];
+  if (apiResponse?.finalAnswer) {
+    return buildResult(apiResponse.finalAnswer, responseType, { hotel, sources });
+  }
+  if (apiResponse?.message) {
+    return buildResult(apiResponse.message, responseType, { hotel, sources });
+  }
+  return buildResult(FALLBACK_NO_RESULT, "no_results", { hotel, sources });
+}
+
+/**
+ * Live ChatGPT simulation: streams pipeline steps + exact MCP tool payload.
+ * Body: { message, hotelId?, sessionId?, language? }
+ */
+app.post("/sim/chat", async (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  if (typeof res.flushHeaders === "function") res.flushHeaders();
+
+  const message = String(req.body?.message || "").trim();
+  const hotelId = req.body?.hotelId ? String(req.body.hotelId).trim() : "";
+  const sessionId = req.body?.sessionId || null;
+  const language = req.body?.language || null;
+  const t0 = Date.now();
+
+  const emitMcp = async (agent, detail, status = "ok", durationMs = 0, meta = null) => {
+    writeSimSse(res, "step", {
+      id: randomUUID().slice(0, 12),
+      agent,
+      kind: "mcp",
+      phase: "end",
+      detail,
+      elapsedMs: Date.now() - t0,
+      durationMs,
+      status,
+      meta
+    });
+  };
+
+  try {
+    if (!message) {
+      writeSimSse(res, "error", { error: "message is required" });
+      return res.end();
+    }
+
+    const toolName = hotelId ? "get_hotel_details" : "get_response";
+    writeSimSse(res, "step", {
+      id: randomUUID().slice(0, 12),
+      agent: "MCP",
+      kind: "mcp",
+      phase: "start",
+      detail: `Tool ${toolName}`,
+      elapsedMs: 0,
+      status: "running",
+      meta: { tool: toolName, hotelId: hotelId || null }
+    });
+
+    const endpoint = hotelId
+      ? "/api/chat/hotel-details/stream"
+      : "/api/chat/recommend/stream";
+    const apiBody = hotelId
+      ? {
+          HotelId: hotelId,
+          Message: message,
+          SessionId: sessionId,
+          Language: language,
+          IsVoice: false
+        }
+      : {
+          Requirements: message,
+          SessionId: sessionId,
+          Language: language,
+          MinConfidence: 0.45
+        };
+
+    const apiStart = Date.now();
+    const response = await fetchWithTimeout(`${API_BASE_URL}${endpoint}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream"
+      },
+      body: JSON.stringify(apiBody)
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      await emitMcp("MCP", `API ${response.status}`, "error", Date.now() - apiStart, {
+        body: errText.slice(0, 200)
+      });
+      writeSimSse(res, "error", { error: `API ${response.status}`, detail: errText.slice(0, 300) });
+      return res.end();
+    }
+
+    let apiResult = null;
+    await consumeApiSse(response, {
+      onStep: (step) => writeSimSse(res, "step", step),
+      onResult: (result) => {
+        apiResult = result;
+      },
+      onDone: (done) => writeSimSse(res, "api_done", done),
+      onError: (err) => writeSimSse(res, "error", err)
+    });
+
+    await emitMcp(
+      "MCP",
+      `Tool ${toolName} fertig`,
+      "ok",
+      Date.now() - apiStart,
+      { tool: toolName }
+    );
+
+    const toolResult = hotelId
+      ? toolResultFromDetailsApi(apiResult)
+      : toolResultFromRecommendApi(apiResult);
+
+    // Exact payload ChatGPT receives from the tool (answer is what the model should surface)
+    writeSimSse(res, "tool_result", {
+      tool: toolName,
+      result: toolResult,
+      chatgptSees: {
+        content: [{ type: "text", text: JSON.stringify(toolResult) }],
+        structuredContent: toolResult
+      },
+      totalMs: Date.now() - t0
+    });
+    writeSimSse(res, "done", { totalMs: Date.now() - t0 });
+    res.end();
+  } catch (error) {
+    const timedOut = error?.name === "AbortError";
+    writeSimSse(res, "error", {
+      error: timedOut ? "timeout" : error?.message || "sim failed"
+    });
+    res.end();
+  }
+});
+
 app.get("/", (_req, res) => {
   res.type("text/plain").send("Bestwellness MCP Server ready");
 });
@@ -584,8 +756,10 @@ app.listen(PORT, async () => {
   console.log(`[OK] Bestwellness MCP Server v${SERVER_VERSION}`);
   console.log(`[PORT] ${PORT}`);
   console.log(`[MCP] /mcp (Streamable HTTP)`);
+  console.log(`[SIM] http://localhost:${PORT}/sim`);
   console.log(`[LEGACY] /sse`);
   console.log(`[HEALTH] /health`);
+  console.log(`[API] ${API_BASE_URL}`);
   await loadPromptsFromApi();
   setInterval(loadPromptsFromApi, 5 * 60 * 1000);
 });
