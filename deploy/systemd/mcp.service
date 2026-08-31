@@ -1,5 +1,5 @@
 [Unit]
-Description=BestWellness MCP Server (ChatGPT SSE)
+Description=BestWellness MCP Server (Streamable HTTP /mcp)
 After=network.target hotelchatbot-api.service
 Wants=hotelchatbot-api.service
 
@@ -11,7 +11,12 @@ Restart=always
 RestartSec=10
 Environment=NODE_ENV=production
 Environment=PORT={{MCP_PORT}}
-Environment=API_BASE_URL=https://mcp-api.bestalpine2.ms.mynet.at
+Environment=API_BASE_URL=http://127.0.0.1:{{API_PORT}}
+Environment=API_TIMEOUT_MS=90000
+Environment=ENABLE_DEBUG=false
+# Optional: Token für GET /.well-known/openai-apps-challenge
+# Environment=OPENAI_APPS_CHALLENGE_TOKEN=
+EnvironmentFile=-{{REMOTE_MCP_DIR}}/.env
 
 [Install]
 WantedBy=default.target

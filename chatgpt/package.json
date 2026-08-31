@@ -1,7 +1,7 @@
 {
   "name": "hotelchatbot-mcp-server",
-  "version": "1.0.0",
-  "description": "MCP Server für ChatGPT Custom GPT - Hotel Chatbot API",
+  "version": "6.0.0",
+  "description": "MCP Server for Best Alpine Wellness Hotels (ChatGPT / OpenAI Apps)",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -18,9 +18,13 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.18.2",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "node-fetch": "^3.3.2"
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.5.0",
+    "node-fetch": "^3.3.2",
+    "zod": "^3.25.0"
   },
   "engines": {
     "node": ">=18.0.0"

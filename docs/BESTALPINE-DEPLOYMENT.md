@@ -148,7 +148,7 @@ pgvector-Extension sollte auf dem Server bereits aktiv sein.
 |-------------|------|
 | Öffentliche URL | `https://mcp.bestalpine2.ms.mynet.at` |
 | Backend | `http://127.0.0.1:3001` |
-| Pfade | `/`, `/sse`, `/health` |
+| Pfade | `/`, `/mcp`, `/sse`, `/health`, `/.well-known/` |
 | SSL | vom Server / Let’s Encrypt |
 | WebSocket/SSE | Proxy darf Streaming nicht puffern (`ProxyPass` + ggf. `flushpackets=on`) |
 
@@ -162,7 +162,8 @@ ProxyPassReverse / http://127.0.0.1:3001/
 
 Die .NET-API bleibt **nur intern** auf Port 8080. Optional kann später eine zweite Subdomain (z. B. `api.wellnesshotels.com`) für Admin/Crawling eingerichtet werden.
 
-**ChatGPT Connector URL:** `https://mcp.bestalpine2.ms.mynet.at/sse`
+**OpenAI / ChatGPT MCP URL (Einreichung):** `https://mcp.bestalpine2.ms.mynet.at/mcp`  
+**Legacy SSE (Übergang):** `https://mcp.bestalpine2.ms.mynet.at/sse`
 
 ---
 

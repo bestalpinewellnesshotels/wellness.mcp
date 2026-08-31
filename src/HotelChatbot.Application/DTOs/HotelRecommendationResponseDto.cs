@@ -62,43 +62,38 @@ public class HotelRecommendationResponseDto
 /// </summary>
 public class HotelRecommendationDto
 {
-    /// <summary>
-    /// Hotel-ID
-    /// </summary>
     public required string HotelId { get; set; }
 
-    /// <summary>
-    /// Hotel-Name
-    /// </summary>
     public required string HotelName { get; set; }
 
-    /// <summary>
-    /// Hotel-Domain
-    /// </summary>
     public required string Domain { get; set; }
 
+    public string Location { get; set; } = HotelPublicDto.NotAvailable;
+
+    public string Region { get; set; } = HotelPublicDto.NotAvailable;
+
+    public string Country { get; set; } = HotelPublicDto.NotAvailable;
+
+    public string OfficialUrl { get; set; } = HotelPublicDto.NotAvailable;
+
+    public string SourceUrl { get; set; } = HotelPublicDto.NotAvailable;
+
+    public string EditorialReviewStatus { get; set; } = HotelPublicDto.NotAvailable;
+
+    public string? EditorialReviewedAt { get; set; }
+
+    public List<string> Categories { get; set; } = new();
+
     /// <summary>
-    /// Match-Score (0.0 - 1.0) - wie gut das Hotel zu den Anforderungen passt
+    /// Match-Score (0.0 - 1.0)
     /// </summary>
     public double MatchScore { get; set; }
 
-    /// <summary>
-    /// Begründung warum dieses Hotel empfohlen wird
-    /// </summary>
     public required string Reason { get; set; }
 
-    /// <summary>
-    /// Relevante Features/Highlights die zur Anforderung passen
-    /// </summary>
     public List<string> MatchingFeatures { get; set; } = new();
 
-    /// <summary>
-    /// Quellen (Content-Chunks) die zur Empfehlung beigetragen haben
-    /// </summary>
     public List<string> Sources { get; set; } = new();
 
-    /// <summary>
-    /// Rang/Position in der Empfehlungs-Liste (1 = beste Empfehlung)
-    /// </summary>
     public int Rank { get; set; }
 }

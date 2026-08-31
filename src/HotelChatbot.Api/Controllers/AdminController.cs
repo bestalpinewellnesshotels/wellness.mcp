@@ -99,7 +99,15 @@ public class AdminController : ControllerBase
                 domain = hotel.Domain,
                 allowedDomains = hotel.AllowedDomains,
                 apiKey = hotel.ApiKey,
-                isActive = hotel.IsActive
+                isActive = hotel.IsActive,
+                location = hotel.Location,
+                region = hotel.Region,
+                country = hotel.Country,
+                officialUrl = hotel.OfficialUrl,
+                sourceUrl = hotel.SourceUrl,
+                editorialReviewStatus = hotel.EditorialReviewStatus,
+                editorialReviewedAt = hotel.EditorialReviewedAt,
+                categories = hotel.Categories
             });
         }
         catch (Exception ex)
@@ -1108,6 +1116,9 @@ Sicherstellen, dass Playwright-Browser installiert sind (`playwright install chr
     /// <summary>
     /// Analysiert ein einzelnes Hotel (mit Caching für Sitemap-Daten).
     /// </summary>
+    private static string? NullIfBlank(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
     private async Task<object> AnalyzeHotelAsync(Domain.Entities.Hotel hotel, CancellationToken cancellationToken)
     {
         try
@@ -1483,15 +1494,32 @@ Sicherstellen, dass Playwright-Browser installiert sind (`playwright install chr
             // Update properties
             if (!string.IsNullOrWhiteSpace(request.Name))
                 hotel.Name = request.Name;
-            
+
             if (!string.IsNullOrWhiteSpace(request.Domain))
                 hotel.Domain = request.Domain;
-            
+
             if (request.AllowedDomains != null && request.AllowedDomains.Any())
                 hotel.AllowedDomains = request.AllowedDomains;
-            
+
             if (request.IsActive.HasValue)
                 hotel.IsActive = request.IsActive.Value;
+
+            if (request.Location != null)
+                hotel.Location = NullIfBlank(request.Location);
+            if (request.Region != null)
+                hotel.Region = NullIfBlank(request.Region);
+            if (request.Country != null)
+                hotel.Country = NullIfBlank(request.Country);
+            if (request.OfficialUrl != null)
+                hotel.OfficialUrl = NullIfBlank(request.OfficialUrl);
+            if (request.SourceUrl != null)
+                hotel.SourceUrl = NullIfBlank(request.SourceUrl);
+            if (request.EditorialReviewStatus != null)
+                hotel.EditorialReviewStatus = NullIfBlank(request.EditorialReviewStatus);
+            if (request.EditorialReviewedAt.HasValue)
+                hotel.EditorialReviewedAt = request.EditorialReviewedAt;
+            if (request.Categories != null)
+                hotel.Categories = request.Categories.Where(c => !string.IsNullOrWhiteSpace(c)).ToList();
 
             await _hotelRepository.UpdateAsync(hotel);
 
@@ -1502,7 +1530,15 @@ Sicherstellen, dass Playwright-Browser installiert sind (`playwright install chr
                 name = hotel.Name,
                 domain = hotel.Domain,
                 allowedDomains = hotel.AllowedDomains,
-                isActive = hotel.IsActive
+                isActive = hotel.IsActive,
+                location = hotel.Location,
+                region = hotel.Region,
+                country = hotel.Country,
+                officialUrl = hotel.OfficialUrl,
+                sourceUrl = hotel.SourceUrl,
+                editorialReviewStatus = hotel.EditorialReviewStatus,
+                editorialReviewedAt = hotel.EditorialReviewedAt,
+                categories = hotel.Categories
             });
         }
         catch (Exception ex)
@@ -1793,6 +1829,14 @@ public class UpdateHotelRequest
     public string? Domain { get; set; }
     public List<string>? AllowedDomains { get; set; }
     public bool? IsActive { get; set; }
+    public string? Location { get; set; }
+    public string? Region { get; set; }
+    public string? Country { get; set; }
+    public string? OfficialUrl { get; set; }
+    public string? SourceUrl { get; set; }
+    public string? EditorialReviewStatus { get; set; }
+    public DateTime? EditorialReviewedAt { get; set; }
+    public List<string>? Categories { get; set; }
 }
 
 /// <summary>

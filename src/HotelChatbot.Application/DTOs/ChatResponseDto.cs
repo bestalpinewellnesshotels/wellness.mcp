@@ -55,4 +55,14 @@ public class ChatResponseDto
     /// Timestamp der Antwort
     /// </summary>
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Öffentliche Hotel-Metadaten (für Detail-Tool); null bei Fehlern ohne Hotel.
+    /// </summary>
+    public HotelPublicDto? Hotel { get; set; }
+
+    /// <summary>
+    /// Quellen-URLs aus dem redaktionellen Index
+    /// </summary>
+    public List<string> Sources { get; set; } = new();
 }

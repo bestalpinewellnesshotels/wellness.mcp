@@ -67,11 +67,49 @@ public class ChatController : ControllerBase
     }
 
     /// <summary>
+    /// Read-only Detailfrage zu einem Hotel anhand stabiler Hotel-ID.
+    /// </summary>
+    [HttpPost("hotel-details")]
+    [ProducesResponseType(typeof(ChatResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ChatResponseDto>> GetHotelDetails(
+        [FromBody] ChatRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(request.HotelId) || string.IsNullOrWhiteSpace(request.Message))
+            {
+                return BadRequest(new { error = "hotelId and message (question) are required" });
+            }
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(60));
+
+            var response = await _chatService.ProcessHotelDetailsAsync(request, cts.Token);
+
+            if (response.ErrorMessage == "hotel_not_found")
+                return NotFound(new { error = response.FinalAnswer ?? response.Message });
+
+            if (!response.Success && response.ResponseType == "error")
+                return BadRequest(new { error = response.FinalAnswer ?? response.Message });
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Fehler bei Hotel-Details");
+            return StatusCode(500, new { error = "Interner Serverfehler" });
+        }
+    }
+
+    /// <summary>
     /// Health Check Endpoint.
     /// </summary>
     [HttpGet("health")]
     public IActionResult Health()
     {
-        return Ok(new { status = "healthy", timestamp = DateTime.UtcNow });
+        return Ok(new { status = "ok" });
     }
 }

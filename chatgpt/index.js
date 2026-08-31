@@ -1,63 +1,94 @@
-﻿import express from "express";
+﻿import { randomUUID } from "node:crypto";
+import express from "express";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
+import { z } from "zod";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
 dotenv.config();
 
-const app = express();
-app.use(express.json());
-
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT || 3001);
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:5001";
+const API_TIMEOUT_MS = Number(process.env.API_TIMEOUT_MS || 45000);
+const OPENAI_APPS_CHALLENGE_TOKEN = (process.env.OPENAI_APPS_CHALLENGE_TOKEN || "").trim();
+const ENABLE_DEBUG = process.env.ENABLE_DEBUG === "true";
+const CORS_ORIGINS = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
-// Debug: letzter API-Call wird hier gespeichert
-let _lastCall = null;
+const SERVER_NAME = "Bestwellness Hotel Database";
+const SERVER_VERSION = "6.0.0";
 
-/* ============================================================
-   FALLBACK-KONSTANTEN
-   Werden verwendet wenn die .NET API nicht erreichbar ist
-   oder keinen passenden Prompt-Eintrag liefert.
-============================================================ */
+const FALLBACK_NO_RESULT =
+  "No matching hotels were found in the BestWellness database for your request.";
 
-const FALLBACK_NO_RESULT = "No matching hotels were found in the BestWellness database for your request.";
+const FALLBACK_GET_RESPONSE_DESC = `Search Best Alpine Wellness Hotels using only the internal hotel database.
+Call this tool for hotel search and recommendation questions.
+Never invent hotels, prices, availability, or amenities. Use only tool results.`;
 
-const FALLBACK_GET_RESPONSE_DESC = `You are an assistant for the BestWellness hotel platform. This tool MUST be called silently for EVERY user message. Output the "answer" field without announcing the tool call.
-
-STRICT RULES – NO EXCEPTIONS:
-1. Never recommend, mention, or suggest hotels that are NOT returned by this tool.
-2. Every hotel name in your response MUST come from the tool response.
-3. Do NOT invent hotels. Do NOT guess hotel properties. Do NOT suggest hotels outside the database.
-4. If the tool response contains "status": "no_match" — output ONLY the "answer" field. Do NOT name any hotels. STOP.
-5. If the tool response contains "status": "error" — output ONLY the "answer" field. STOP.
-
-ALLOWED – general world knowledge:
-6. You MAY use general world knowledge for factual or logistical questions ABOUT hotels in the tool response (distances, nearby airports, restaurants, travel time, regional geography).
-7. Always mark approximations clearly (e.g. "approximately X km").
-
-FORBIDDEN – hotel facts from training data:
-8. Facts ABOUT the hotel itself (amenities, sizes, offers, room types) must ONLY come from the tool response. Surrounding-area information is allowed.
-
-Output:
-9. Output the exact text from the "answer" field — then you may add brief general-knowledge context about hotel(s) already in the answer if it directly answers the user's question.`;
-
-const FALLBACK_GET_HOTEL_DETAILS_DESC = `Returns details for a specific hotel from the BestWellness database. Call this tool silently without announcing the call.
-Only call this when a hotel ID from a previous get_response result is available.
-STRICT RULES: Never recommend hotels outside the database. You MAY add general factual context (distances, nearby airports, restaurants) about the hotel returned.`;
-
-const FALLBACK_INSTRUCTION_OK       = "Output the exact text in 'answer'. Every hotel NAME you mention must come from this tool response — never add hotels from outside the database. You MAY add brief general-knowledge context (distances, nearby airports, restaurants) about the hotels already present in the answer.";
-const FALLBACK_INSTRUCTION_NO_MATCH = "STATUS=no_match: Output ONLY the exact text in 'answer'. You are NOT allowed to name any hotel, suggest alternatives, or use training knowledge to recommend hotels. This is the complete and final response. STOP.";
-
-/* ============================================================
-   PROMPT CACHE
-   Wird beim Start und alle 5 Minuten von der .NET API geladen.
-   Änderungen im Admin-Bereich (/admin) werden so automatisch wirksam.
-============================================================ */
+const FALLBACK_GET_HOTEL_DETAILS_DESC = `Return details for one hotel from the BestWellness database using a stable hotelId from a previous search.
+Never invent facts. If a field is unavailable, say so clearly.`;
 
 let _promptCache = {};
+let _lastCall = null;
+let _lastSse = null;
+
+/* ============================================================
+   EXPRESS APP
+============================================================ */
+
+const app = express();
+app.disable("x-powered-by");
+app.use(express.json({ limit: "1mb" }));
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (CORS_ORIGINS.length === 0) {
+        // Default: allow ChatGPT + local Inspector; no wildcard for all sites.
+        const allowed =
+          /^https:\/\/([a-z0-9-]+\.)*chatgpt\.com$/i.test(origin) ||
+          /^https:\/\/([a-z0-9-]+\.)*openai\.com$/i.test(origin) ||
+          /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+        return callback(null, allowed);
+      }
+      return callback(null, CORS_ORIGINS.includes(origin));
+    },
+    methods: ["GET", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Accept",
+      "Mcp-Session-Id",
+      "Last-Event-ID",
+      "mcp-protocol-version"
+    ],
+    exposedHeaders: ["Mcp-Session-Id"],
+    maxAge: 600
+  })
+);
+
+const limiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_PER_MINUTE || 60),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please try again later." }
+});
+app.use(limiter);
+
+/* ============================================================
+   PROMPTS
+============================================================ */
 
 async function loadPromptsFromApi() {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/admin/system-prompts`);
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/admin/system-prompts`);
     if (!res.ok) return;
     const prompts = await res.json();
     const cache = {};
@@ -76,45 +107,18 @@ function getPrompt(key, fallback) {
 }
 
 /* ============================================================
-   MCP TOOL DEFINITIONS
+   API HELPERS
 ============================================================ */
 
-function getMcpTools() {
-  return [
-    {
-      name: "get_response",
-      description: getPrompt("mcp.get_response.description", FALLBACK_GET_RESPONSE_DESC),
-      inputSchema: {
-        type: "object",
-        properties: {
-          message: {
-            type: "string",
-            description: "The exact user message"
-          }
-        },
-        required: ["message"]
-      }
-    },
-    {
-      name: "get_hotel_details",
-      description: getPrompt("mcp.get_hotel_details.description", FALLBACK_GET_HOTEL_DETAILS_DESC),
-      inputSchema: {
-        type: "object",
-        properties: {
-          hotelId: { type: "string" },
-          question: { type: "string" },
-          sessionId: { type: "string" },
-          language: { type: "string", description: "Optional language hint (e.g. 'de', 'en')" }
-        },
-        required: ["hotelId", "question"]
-      }
-    }
-  ];
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
-
-/* ============================================================
-   HELPER: .NET API aufrufen
-============================================================ */
 
 async function callDotNetApi(endpoint, method = "GET", body = null) {
   const url = `${API_BASE_URL}${endpoint}`;
@@ -127,94 +131,358 @@ async function callDotNetApi(endpoint, method = "GET", body = null) {
     const https = await import("https");
     options.agent = new https.Agent({ rejectUnauthorized: false });
   }
-  console.log(`[API] --> ${method} ${url}`);
-  if (body) console.log(`[API] Body: ${JSON.stringify(body)}`);
+
+  console.log(`[API] --> ${method} ${endpoint}`);
   const t0 = Date.now();
-  _lastCall = { ts: new Date().toISOString(), method, url, requestBody: body, status: null, error: null, responseKeys: null };
+  _lastCall = {
+    ts: new Date().toISOString(),
+    method,
+    endpoint,
+    status: null,
+    error: null,
+    elapsedMs: null
+  };
+
   try {
-    const response = await fetch(url, options);
+    const response = await fetchWithTimeout(url, options);
     const elapsed = Date.now() - t0;
-    console.log(`[API] <-- ${response.status} ${response.statusText} (${elapsed}ms)`);
     _lastCall.status = response.status;
-    _lastCall.statusText = response.statusText;
     _lastCall.elapsedMs = elapsed;
+    console.log(`[API] <-- ${response.status} (${elapsed}ms)`);
+
     if (!response.ok) {
       let errBody = "";
-      try { errBody = await response.text(); } catch (_) {}
-      console.error(`[API] Error body: ${errBody}`);
-      _lastCall.error = errBody;
+      try {
+        errBody = await response.text();
+      } catch (_) {}
+      _lastCall.error = errBody ? "upstream_error" : "upstream_error";
+      console.error(`[API] Error status=${response.status}`);
       return null;
     }
-    const json = await response.json();
-    console.log(`[API] Response keys: ${Object.keys(json).join(", ")}`);
-    _lastCall.responseKeys = Object.keys(json);
-    return json;
+    return await response.json();
   } catch (error) {
     const elapsed = Date.now() - t0;
-    console.error(`[API] Call failed after ${elapsed}ms: ${error.name}: ${error.message}`);
-    if (error.cause) console.error(`[API] Cause: ${error.cause}`);
-    _lastCall.error = `${error.name}: ${error.message}`;
-    _lastCall.cause = error.cause ? String(error.cause) : null;
     _lastCall.elapsedMs = elapsed;
+    const timedOut = error?.name === "AbortError";
+    _lastCall.error = timedOut ? "timeout" : "network_error";
+    console.error(`[API] Call failed after ${elapsed}ms: ${timedOut ? "timeout" : error.message}`);
     return null;
   }
 }
 
-/* ============================================================
-   TOOL EXECUTION
-============================================================ */
+function buildResult(answer, responseType, extra = {}) {
+  const isNoMatch =
+    responseType === "no_results" ||
+    responseType === "out_of_scope" ||
+    responseType === "no_match" ||
+    responseType === "ethical_reject" ||
+    responseType === "no_data";
+  const status = isNoMatch ? "no_match" : responseType === "error" ? "error" : "ok";
+  return { status, answer, ...extra };
+}
 
-function buildResult(answer, responseType) {
-  const isNoMatch = responseType === "no_results" || responseType === "out_of_scope"
-    || responseType === "no_match" || responseType === "ethical_reject";
-  const status = isNoMatch ? "no_match" : (responseType === "error" ? "error" : "ok");
-  const instruction = isNoMatch
-    ? getPrompt("mcp.result.instruction.no_match", FALLBACK_INSTRUCTION_NO_MATCH)
-    : getPrompt("mcp.result.instruction.ok",       FALLBACK_INSTRUCTION_OK);
-  return { status, answer, responseType, _instruction: instruction };
+function mapHotelFromRecommendation(r) {
+  return {
+    hotelId: r.hotelId,
+    name: r.hotelName,
+    location: r.location || "not available",
+    region: r.region || "not available",
+    country: r.country || "not available",
+    officialUrl: r.officialUrl || "not available",
+    sourceUrl: r.sourceUrl || "not available",
+    editorialReviewStatus: r.editorialReviewStatus || "not available",
+    editorialReviewedAt: r.editorialReviewedAt || null,
+    categories: Array.isArray(r.categories) ? r.categories : [],
+    rank: r.rank,
+    matchScore: r.matchScore,
+    sources: Array.isArray(r.sources) ? r.sources : []
+  };
+}
+
+function composeSearchMessage(args) {
+  const parts = [];
+  if (args.message) parts.push(String(args.message).trim());
+  if (args.region) parts.push(`Region: ${args.region}`);
+  if (args.travelDates) parts.push(`Travel dates: ${args.travelDates}`);
+  if (args.guests != null) parts.push(`Guests: ${args.guests}`);
+  if (args.adultsOnly === true) parts.push("Adults only");
+  if (args.adultsOnly === false) parts.push("Family-friendly / children welcome preferred");
+  if (args.budget) parts.push(`Budget: ${args.budget}`);
+  if (args.dogsAllowed === true) parts.push("Dogs allowed / pet-friendly");
+  if (args.dogsAllowed === false) parts.push("No dogs");
+  if (args.wellnessFocus) parts.push(`Wellness focus: ${args.wellnessFocus}`);
+  return parts.filter(Boolean).join(". ");
 }
 
 async function executeTool(toolName, args) {
   if (toolName === "get_response") {
-    // Sprache wird von der Pipeline automatisch erkannt — kein language-Parameter nötig
+    const requirements = composeSearchMessage(args);
+    if (!requirements) {
+      return buildResult("Please provide a search request or at least one filter field.", "error");
+    }
     const apiResponse = await callDotNetApi("/api/chat/recommend", "POST", {
-      Requirements: args.message,
+      Requirements: requirements,
       MinConfidence: 0.45
     });
+    if (_lastCall?.error === "timeout") {
+      return {
+        status: "error",
+        answer:
+          "The hotel search timed out. Please try again with a shorter request.",
+        hotels: []
+      };
+    }
     const responseType = apiResponse?.responseType || "unknown";
-    if (apiResponse?.finalAnswer) return buildResult(apiResponse.finalAnswer, responseType);
-    if (apiResponse?.message)     return buildResult(apiResponse.message, responseType);
-    return buildResult(FALLBACK_NO_RESULT, "no_results");
+    const hotels = Array.isArray(apiResponse?.recommendations)
+      ? apiResponse.recommendations.map(mapHotelFromRecommendation)
+      : [];
+    const answer =
+      apiResponse?.finalAnswer || apiResponse?.message || FALLBACK_NO_RESULT;
+    return buildResult(answer, hotels.length ? responseType : (responseType || "no_results"), {
+      hotels,
+      sessionId: apiResponse?.sessionId || null
+    });
   }
 
   if (toolName === "get_hotel_details") {
-    const apiResponse = await callDotNetApi("/api/chat", "POST", {
-      HotelId:   args.hotelId,
+    const apiResponse = await callDotNetApi("/api/chat/hotel-details", "POST", {
+      HotelId: args.hotelId,
       SessionId: args.sessionId,
-      Message:   args.question,
-      Language:  args.language,
-      IsVoice:   false
+      Message: args.question,
+      Language: args.language,
+      IsVoice: false
     });
+    if (_lastCall?.error === "timeout") {
+      return {
+        status: "error",
+        answer: "The hotel details request timed out. Please try again."
+      };
+    }
+    if (_lastCall?.status === 404) {
+      return buildResult(
+        "No hotel was found for the given hotelId. Please use a hotelId from a previous search result.",
+        "error"
+      );
+    }
     const responseType = apiResponse?.responseType || "unknown";
-    if (apiResponse?.finalAnswer) return buildResult(apiResponse.finalAnswer, responseType);
-    if (apiResponse?.message)     return buildResult(apiResponse.message, responseType);
-    return buildResult(FALLBACK_NO_RESULT, "no_results");
+    const hotel = apiResponse?.hotel || null;
+    const sources = Array.isArray(apiResponse?.sources) ? apiResponse.sources : [];
+    if (apiResponse?.finalAnswer) {
+      return buildResult(apiResponse.finalAnswer, responseType, { hotel, sources });
+    }
+    if (apiResponse?.message) {
+      return buildResult(apiResponse.message, responseType, { hotel, sources });
+    }
+    return buildResult(FALLBACK_NO_RESULT, "no_results", { hotel, sources });
   }
 
   return buildResult(FALLBACK_NO_RESULT, "no_results");
 }
 
+function toToolResponse(result) {
+  return {
+    content: [{ type: "text", text: JSON.stringify(result) }],
+    structuredContent: result
+  };
+}
+
 /* ============================================================
-   MCP SSE ENDPOINT
+   MCP SERVER (Streamable HTTP)
 ============================================================ */
 
-// Debug: letzter SSE-Request wird hier gespeichert
-let _lastSse = null;
+function createMcpServer() {
+  const server = new McpServer(
+    {
+      name: SERVER_NAME,
+      version: SERVER_VERSION
+    },
+    {
+      instructions:
+        "Use get_response to search hotels, then get_hotel_details with a hotelId from the search. Only use data returned by tools. Do not invent prices, availability, or amenities."
+    }
+  );
+
+  server.registerTool(
+    "get_response",
+    {
+      title: "Search hotels",
+      description: getPrompt("mcp.get_response.description", FALLBACK_GET_RESPONSE_DESC),
+      inputSchema: {
+        message: z
+          .string()
+          .optional()
+          .describe("Free-text search request (optional if structured filters are set)"),
+        region: z.string().optional().describe("Region or area, e.g. Tyrol, Salzburger Land"),
+        travelDates: z.string().optional().describe("Travel dates or season if stated by the user"),
+        guests: z.number().int().positive().optional().describe("Number of guests/persons"),
+        adultsOnly: z.boolean().optional().describe("Prefer adults-only hotels when true"),
+        budget: z.string().optional().describe("Budget preference if stated"),
+        dogsAllowed: z.boolean().optional().describe("Need dog-friendly hotels when true"),
+        wellnessFocus: z
+          .string()
+          .optional()
+          .describe("Wellness focus, e.g. spa, sauna, medical wellness")
+      },
+      annotations: {
+        readOnlyHint: true,
+        openWorldHint: false,
+        destructiveHint: false
+      }
+    },
+    async (args) => toToolResponse(await executeTool("get_response", args))
+  );
+
+  server.registerTool(
+    "get_hotel_details",
+    {
+      title: "Get hotel details",
+      description: getPrompt(
+        "mcp.get_hotel_details.description",
+        FALLBACK_GET_HOTEL_DETAILS_DESC
+      ),
+      inputSchema: {
+        hotelId: z.string().describe("Stable hotel ID from a previous get_response result"),
+        question: z.string().describe("Question about this hotel"),
+        sessionId: z.string().optional().describe("Optional session id"),
+        language: z.string().optional().describe("Optional language hint (e.g. de, en)")
+      },
+      annotations: {
+        readOnlyHint: true,
+        openWorldHint: false,
+        destructiveHint: false
+      }
+    },
+    async (args) => toToolResponse(await executeTool("get_hotel_details", args))
+  );
+
+  return server;
+}
+
+/** @type {Record<string, StreamableHTTPServerTransport>} */
+const transports = {};
+
+async function mcpPostHandler(req, res) {
+  const sessionId = req.headers["mcp-session-id"];
+  try {
+    let transport;
+    if (sessionId && transports[sessionId]) {
+      transport = transports[sessionId];
+    } else if (!sessionId && isInitializeRequest(req.body)) {
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (sid) => {
+          transports[sid] = transport;
+        }
+      });
+      transport.onclose = () => {
+        const sid = transport.sessionId;
+        if (sid && transports[sid]) delete transports[sid];
+      };
+      const server = createMcpServer();
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+      return;
+    } else {
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: { code: -32000, message: "Bad Request: No valid session ID provided" },
+        id: null
+      });
+      return;
+    }
+    await transport.handleRequest(req, res, req.body);
+  } catch (error) {
+    console.error("[MCP] POST error:", error?.message || error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: "2.0",
+        error: { code: -32603, message: "Internal server error" },
+        id: null
+      });
+    }
+  }
+}
+
+async function mcpSessionHandler(req, res) {
+  const sessionId = req.headers["mcp-session-id"];
+  if (!sessionId || !transports[sessionId]) {
+    res.status(400).send("Invalid or missing session ID");
+    return;
+  }
+  try {
+    await transports[sessionId].handleRequest(req, res);
+  } catch (error) {
+    console.error(`[MCP] ${req.method} error:`, error?.message || error);
+    if (!res.headersSent) {
+      res.status(500).send("Internal server error");
+    }
+  }
+}
+
+app.options("/mcp", (_req, res) => {
+  res.sendStatus(204);
+});
+app.post("/mcp", mcpPostHandler);
+app.get("/mcp", mcpSessionHandler);
+app.delete("/mcp", mcpSessionHandler);
+
+/* ============================================================
+   LEGACY SSE (Übergang – nicht Einreichungsendpunkt)
+============================================================ */
+
+function getLegacyMcpTools() {
+  return [
+    {
+      name: "get_response",
+      description: getPrompt("mcp.get_response.description", FALLBACK_GET_RESPONSE_DESC),
+      inputSchema: {
+        type: "object",
+        properties: {
+          message: { type: "string", description: "Free-text search request" },
+          region: { type: "string" },
+          travelDates: { type: "string" },
+          guests: { type: "integer" },
+          adultsOnly: { type: "boolean" },
+          budget: { type: "string" },
+          dogsAllowed: { type: "boolean" },
+          wellnessFocus: { type: "string" }
+        }
+      },
+      annotations: {
+        readOnlyHint: true,
+        openWorldHint: false,
+        destructiveHint: false
+      }
+    },
+    {
+      name: "get_hotel_details",
+      description: getPrompt(
+        "mcp.get_hotel_details.description",
+        FALLBACK_GET_HOTEL_DETAILS_DESC
+      ),
+      inputSchema: {
+        type: "object",
+        properties: {
+          hotelId: { type: "string" },
+          question: { type: "string" },
+          sessionId: { type: "string" },
+          language: { type: "string", description: "Optional language hint (e.g. 'de', 'en')" }
+        },
+        required: ["hotelId", "question"]
+      },
+      annotations: {
+        readOnlyHint: true,
+        openWorldHint: false,
+        destructiveHint: false
+      }
+    }
+  ];
+}
 
 app.post("/sse", async (req, res) => {
-  const { method, params, id } = req.body;
-  _lastSse = { ts: new Date().toISOString(), method, id, params: params || null };
-  console.log(`[SSE] method=${method} id=${id} params=${JSON.stringify(params || null)}`);
+  const { method, params, id } = req.body || {};
+  _lastSse = { ts: new Date().toISOString(), method, id };
+  console.log(`[SSE] method=${method} id=${id}`);
 
   if (method === "initialize") {
     return res.json({
@@ -223,8 +491,8 @@ app.post("/sse", async (req, res) => {
       result: {
         protocolVersion: "2024-11-05",
         serverInfo: {
-          name: "Bestwellness Hotel Database",
-          version: "5.1.0",
+          name: SERVER_NAME,
+          version: SERVER_VERSION,
           description: "BestWellness Wellness-Hotel-Assistent."
         },
         capabilities: { tools: {} }
@@ -236,7 +504,7 @@ app.post("/sse", async (req, res) => {
     return res.json({
       jsonrpc: "2.0",
       id,
-      result: { tools: getMcpTools() }
+      result: { tools: getLegacyMcpTools() }
     });
   }
 
@@ -260,10 +528,6 @@ app.post("/sse", async (req, res) => {
   });
 });
 
-/* ============================================================
-   SSE GET - Initial-Handshake
-============================================================ */
-
 app.get("/sse", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -274,49 +538,54 @@ app.get("/sse", (req, res) => {
 });
 
 /* ============================================================
-   REST ENDPOINTS
+   REST + HEALTH + DOMAIN CHALLENGE
 ============================================================ */
 
-app.post("/get_response",     async (req, res) => res.json(await executeTool("get_response",     req.body)));
-app.post("/get_hotel_details", async (req, res) => res.json(await executeTool("get_hotel_details", req.body)));
+app.post("/get_response", async (req, res) =>
+  res.json(await executeTool("get_response", req.body || {}))
+);
+app.post("/get_hotel_details", async (req, res) =>
+  res.json(await executeTool("get_hotel_details", req.body || {}))
+);
 
-app.get("/list_all_hotels", async (req, res) => {
-  const apiResponse = await callDotNetApi("/api/admin/hotels");
-  if (apiResponse?.hotels?.length > 0) {
-    const list = apiResponse.hotels.map(h => `- **${h.name}** (${h.domain})`).join("\n");
-    return res.json({
-      answer: `The BestWellness database contains ${apiResponse.hotels.length} hotel(s):\n\n${list}`
-    });
-  }
-  res.json({ answer: FALLBACK_NO_RESULT });
+app.get("/", (_req, res) => {
+  res.type("text/plain").send("Bestwellness MCP Server ready");
 });
 
-/* ============================================================
-   HEALTH CHECK
-============================================================ */
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok" });
+});
 
-app.get("/debug-last-call", (req, res) => res.json({
-  lastSse: _lastSse || { info: "Noch kein SSE-Call seit dem letzten Neustart" },
-  lastApiCall: _lastCall || { info: "Noch kein API-Call seit dem letzten Neustart" }
-}));
+app.get("/.well-known/openai-apps-challenge", (_req, res) => {
+  if (!OPENAI_APPS_CHALLENGE_TOKEN) {
+    res.status(404).type("text/plain").send("Not found");
+    return;
+  }
+  res.status(200).type("text/plain").send(OPENAI_APPS_CHALLENGE_TOKEN);
+});
 
-app.get("/", (req, res) => res.send("Bestwellness MCP Server V5.1 ready"));
+if (ENABLE_DEBUG) {
+  app.get("/debug-last-call", (_req, res) =>
+    res.json({
+      lastSse: _lastSse || { info: "none" },
+      lastApiCall: _lastCall || { info: "none" }
+    })
+  );
+}
 
-app.get("/health", (req, res) => res.json({
-  status: "healthy",
-  version: "5.1.0",
-  mcpProtocol: "2024-11-05",
-  sseEndpoint: "/sse",
-  apiBaseUrl: API_BASE_URL,
-  timestamp: new Date().toISOString()
-}));
+app.use((err, _req, res, _next) => {
+  console.error("[HTTP] Unhandled error:", err?.message || err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 app.listen(PORT, async () => {
-  console.log(`[OK] Bestwellness MCP Server v5.1`);
+  console.log(`[OK] Bestwellness MCP Server v${SERVER_VERSION}`);
   console.log(`[PORT] ${PORT}`);
-  console.log(`[BACKEND] ${API_BASE_URL}`);
-  console.log(`[SSE] http://localhost:${PORT}/sse`);
-  // Prompts beim Start laden; dann alle 5 Minuten neu
+  console.log(`[MCP] /mcp (Streamable HTTP)`);
+  console.log(`[LEGACY] /sse`);
+  console.log(`[HEALTH] /health`);
   await loadPromptsFromApi();
   setInterval(loadPromptsFromApi, 5 * 60 * 1000);
 });

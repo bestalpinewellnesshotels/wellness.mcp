@@ -322,6 +322,15 @@ function Test-ProductionDeployment {
         Write-Host $logs.Output -ForegroundColor DarkGray
     }
 
+    $mcpInitCmd = "curl -sf -X POST http://127.0.0.1:$($Config.McpPort)/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{`"jsonrpc`":`"2.0`",`"id`":1,`"method`":`"initialize`",`"params`":{`"protocolVersion`":`"2024-11-05`",`"capabilities`":{},`"clientInfo`":{`"name`":`"deploy-check`",`"version`":`"1.0.0`"}}}'"
+    $mcpInit = Invoke-SshCapture $SshTarget $mcpInitCmd
+    if ($mcpInit.ExitCode -eq 0 -and $mcpInit.Output -match "serverInfo|protocolVersion") {
+        Write-OK "MCP /mcp initialize ok"
+    } else {
+        Write-Warn "MCP /mcp initialize konnte nicht verifiziert werden (Proxy/Session). Manuell mit MCP Inspector pruefen."
+        Write-Host $mcpInit.Output -ForegroundColor DarkGray
+    }
+
     if ($Config.PublicUrl) {
         $publicUrl = "$($Config.PublicUrl.TrimEnd('/'))/health"
         try {
@@ -331,6 +340,15 @@ function Test-ProductionDeployment {
             Write-Warn "Oeffentliche URL noch nicht erreichbar: $publicUrl"
             Write-Host "  $($_.Exception.Message)" -ForegroundColor DarkGray
             Write-Host "  Reverse Proxy bei Mynet noetig: $($Config.PublicUrl) -> http://127.0.0.1:$($Config.McpPort)" -ForegroundColor DarkGray
+        }
+
+        $publicMcp = "$($Config.PublicUrl.TrimEnd('/'))/mcp"
+        try {
+            $mcpResp = Invoke-WebRequest -Uri $publicMcp -Method Options -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
+            Write-OK "Oeffentliche URL OPTIONS $publicMcp -> HTTP $($mcpResp.StatusCode)"
+        } catch {
+            Write-Warn "Oeffentliche /mcp noch nicht pruefbar: $publicMcp"
+            Write-Host "  $($_.Exception.Message)" -ForegroundColor DarkGray
         }
     }
 
@@ -490,8 +508,23 @@ if command -v loginctl >/dev/null 2>&1; then loginctl enable-linger `$(whoami) 2
 "@ -replace "`r", ""
     Invoke-SshCommand $sshTarget $setupScript
 
+    # Laufende Binaries freigeben, sonst schlaegt scp mit "dest open ... Failure" fehl
+    Write-Step "Dienste kurz stoppen (Upload)..."
+    $stopScript = @"
+systemctl --user stop mcp.service hotelchatbot-api.service 2>/dev/null || true
+sleep 2
+"@ -replace "`r", ""
+    Invoke-SshCommand $sshTarget $stopScript
+
     Write-Step "API hochladen (kann einige Minuten dauern)..."
     Invoke-ScpRecursive "$buildOutput/*" "${sshTarget}:$($Config.RemoteAppDir)/"
+
+    # Optional lokale MCP-.env (Challenge-Token etc.) mit hochladen, wenn vorhanden
+    $mcpEnv = Join-Path $root "chatgpt\.env"
+    if (Test-Path $mcpEnv) {
+        Copy-Item $mcpEnv $mcpStaging -Force
+        Write-OK "chatgpt\\.env wird mitdeployed (Challenge-Token / Overrides)"
+    }
 
     Write-Step "MCP hochladen..."
     Invoke-ScpRecursive "$mcpStaging/*" "${sshTarget}:$($Config.RemoteMcpDir)/"
@@ -552,11 +585,15 @@ function Show-Summary {
     Write-OK "API intern: http://127.0.0.1:$($Config.ApiPort)"
     Write-OK "MCP intern: http://127.0.0.1:$($Config.McpPort)"
     Write-Host ""
-    Write-Host "  ChatGPT Connector URL:" -ForegroundColor Yellow
-    Write-Host "  $($Config.PublicUrl)/sse" -ForegroundColor White
+    Write-Host "  Offizieller OpenAI-/ChatGPT-Endpunkt:" -ForegroundColor Yellow
+    Write-Host "  $($Config.PublicUrl)/mcp" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Legacy (nur Uebergang): $($Config.PublicUrl)/sse" -ForegroundColor Gray
+    Write-Host "  Health: $($Config.PublicUrl)/health" -ForegroundColor Gray
     Write-Host ""
     Write-Host "  Falls von aussen noch 502 kommt, Mynet bitten:" -ForegroundColor Yellow
     Write-Host "  $($Config.PublicUrl) -> http://127.0.0.1:$($Config.McpPort)" -ForegroundColor Gray
+    Write-Host "  Pfade: /, /mcp, /sse, /health, /.well-known/" -ForegroundColor Gray
     Write-Host ""
     Write-Host "  Logs auf dem Server:" -ForegroundColor Yellow
     Write-Host "  journalctl --user -u hotelchatbot-api.service -f" -ForegroundColor Gray

@@ -195,8 +195,15 @@ public class ChatService
                 return BuildPipelineResponse(false, noResultsAnswer, "no_results", request.Requirements, session.SessionId);
             }
 
+            // Strukturierte Empfehlungen (nach Score gerankt, auf MaxResults begrenzt)
+            var recommendations = BuildRecommendations(validResults, hotelDetails, maxResults);
+            var rankedResults = recommendations
+                .ToDictionary(
+                    r => r.HotelId,
+                    r => validResults[r.HotelId]);
+
             // Kontext aus Top-Chunks aufbauen
-            var context = BuildRecommendationContext(validResults, hotelDetails, maxResults * 3);
+            var context = BuildRecommendationContext(rankedResults, hotelDetails, maxResults * 3);
 
             // ─── Step 4c: RelevanceAgent ──────────────────────────────────────────
             // Prüft ob der gefundene Kontext die Anfrage inhaltlich beantwortet.
@@ -238,10 +245,10 @@ public class ChatService
                 ct);
 
             // Quellenangaben deterministisch anhängen
-            answer += BuildSourcesSection(validResults, hotelDetails, language);
+            answer += BuildSourcesSection(rankedResults, hotelDetails, language);
 
             // Interaktion + empfohlene Hotel-IDs in Session speichern
-            var recommendedIds = validResults.Keys.ToList();
+            var recommendedIds = recommendations.Select(r => r.HotelId).ToList();
             await SaveInteractionAsync(session, request.Requirements, answer, language, recommendedIds, ct);
 
             return new HotelRecommendationResponseDto
@@ -250,6 +257,7 @@ public class ChatService
                 FinalAnswer = answer,
                 ResponseType = "recommendations",
                 Requirements = request.Requirements,
+                Recommendations = recommendations,
                 SessionId = session.SessionId,
                 Timestamp = DateTime.UtcNow
             };
@@ -320,6 +328,142 @@ public class ChatService
     };
 
     /// <summary>
+    /// Verarbeitet eine Detailfrage zu genau einem Hotel (Read-only, kurzer Pfad).
+    /// </summary>
+    public async Task<ChatResponseDto> ProcessHotelDetailsAsync(
+        ChatRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
+        var ct = linked.Token;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(request.HotelId))
+            {
+                return new ChatResponseDto
+                {
+                    SessionId = request.SessionId ?? string.Empty,
+                    Message = "A valid hotelId is required.",
+                    FinalAnswer = "A valid hotelId is required.",
+                    ResponseType = "error",
+                    Success = false,
+                    ErrorMessage = "hotelId is required"
+                };
+            }
+
+            var hotel = await _hotelRepository.GetByIdAsync(request.HotelId.Trim(), ct);
+            if (hotel == null || !hotel.IsActive)
+            {
+                var unknown = "No hotel was found for the given hotelId. Please use a hotelId from a previous search result.";
+                return new ChatResponseDto
+                {
+                    SessionId = request.SessionId ?? string.Empty,
+                    Message = unknown,
+                    FinalAnswer = unknown,
+                    ResponseType = "error",
+                    Success = false,
+                    ErrorMessage = "hotel_not_found"
+                };
+            }
+
+            string language;
+            if (!string.IsNullOrWhiteSpace(request.Language))
+                language = NormalizeLanguageCode(request.Language);
+            else
+            {
+                var langPrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.language_detect", ct);
+                var detected = await _chatCompletionService.DetectLanguageAsync(request.Message, langPrompt, ct);
+                language = NormalizeLanguageCode(detected);
+            }
+
+            var translatePrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.translate_to_german", ct);
+            var queryForSearch = await _chatCompletionService.TranslateToGermanAsync(request.Message, translatePrompt, ct);
+
+            var chunks = await _vectorStore.SearchAsync(
+                hotel.HotelId, queryForSearch, 8, 0.40, ct);
+
+            var publicHotel = HotelPublicDto.FromHotel(hotel);
+            var sources = chunks
+                .Select(c => c.Chunk.SourceUrl)
+                .Where(u => !string.IsNullOrWhiteSpace(u))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(8)
+                .ToList();
+
+            if (chunks.Count == 0)
+            {
+                var noData = language == "de"
+                    ? $"Für „{hotel.Name}“ liegen zu dieser Frage keine freigegebenen Informationen vor."
+                    : $"No approved information is available for “{hotel.Name}” for this question.";
+                return new ChatResponseDto
+                {
+                    SessionId = request.SessionId ?? string.Empty,
+                    Message = noData,
+                    FinalAnswer = noData,
+                    ResponseType = "no_data",
+                    Success = true,
+                    Language = language,
+                    Hotel = publicHotel,
+                    Sources = sources
+                };
+            }
+
+            var contextParts = chunks.Select((item, index) =>
+                $"[Result {index + 1}] HotelId: {hotel.HotelId} | Hotel: {hotel.Name}\n" +
+                (!string.IsNullOrWhiteSpace(item.Chunk.Title) ? $"Section: {item.Chunk.Title}\n" : "") +
+                $"{item.Chunk.Content}\n" +
+                $"Source URL: {item.Chunk.SourceUrl}");
+            var context = string.Join("\n\n---\n\n", contextParts);
+
+            var answerPrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.answer", ct);
+            answerPrompt = (answerPrompt ?? FallbackAnswerPrompt).Replace("{language}", LanguageName(language));
+
+            var answer = await _chatCompletionService.GenerateResponseAsync(
+                answerPrompt,
+                context,
+                request.Message,
+                new List<(string Role, string Content)>(),
+                language,
+                PipelineContextWrapper,
+                ct);
+
+            if (sources.Count > 0)
+            {
+                var header = language == "de" ? "\n\n---\n**Quellen:**" : "\n\n---\n**Sources:**";
+                answer += header + "\n" + string.Join("\n", sources.Select(u => $"- {hotel.Name}: {u}"));
+            }
+
+            return new ChatResponseDto
+            {
+                SessionId = request.SessionId ?? string.Empty,
+                Message = answer,
+                FinalAnswer = answer,
+                ResponseType = "final_answer",
+                Success = true,
+                Language = language,
+                Hotel = publicHotel,
+                Sources = sources,
+                ConfidenceScore = chunks.Max(c => c.Score)
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Hotel-Details fehlgeschlagen für {HotelId}", request.HotelId);
+            return new ChatResponseDto
+            {
+                SessionId = request.SessionId ?? string.Empty,
+                Message = "An error occurred while loading hotel details. Please try again.",
+                FinalAnswer = "An error occurred while loading hotel details. Please try again.",
+                ResponseType = "error",
+                Success = false,
+                ErrorMessage = "internal_error"
+            };
+        }
+    }
+
+    /// <summary>
     /// Baut den Kontext für den AnswerAgent aus den Vektorsuchergebnissen.
     /// </summary>
     private static string BuildRecommendationContext(
@@ -336,13 +480,70 @@ public class ChatService
         var parts = topChunks.Select((item, index) =>
         {
             var hotelName = hotelDetails.TryGetValue(item.HotelId, out var hotel) ? hotel.Name : item.HotelId;
-            return $"[Result {index + 1}] Hotel: {hotelName}\n" +
+            return $"[Result {index + 1}] HotelId: {item.HotelId} | Hotel: {hotelName}\n" +
                    (!string.IsNullOrWhiteSpace(item.Chunk.Title) ? $"Section: {item.Chunk.Title}\n" : "") +
                    $"{item.Chunk.Content}\n" +
                    $"Source URL: {item.Chunk.SourceUrl}";
         });
 
         return string.Join("\n\n---\n\n", parts);
+    }
+
+    private static List<HotelRecommendationDto> BuildRecommendations(
+        Dictionary<string, List<(ContentChunk Chunk, double Score)>> results,
+        Dictionary<string, Hotel> hotelDetails,
+        int maxResults)
+    {
+        return results
+            .Select(kvp =>
+            {
+                var hotel = hotelDetails[kvp.Key];
+                var best = kvp.Value.OrderByDescending(x => x.Score).First();
+                var pub = HotelPublicDto.FromHotel(hotel);
+                var sources = kvp.Value
+                    .Select(x => x.Chunk.SourceUrl)
+                    .Where(u => !string.IsNullOrWhiteSpace(u))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(5)
+                    .ToList();
+                var features = kvp.Value
+                    .Select(x => x.Chunk.Title)
+                    .Where(t => !string.IsNullOrWhiteSpace(t))
+                    .Distinct()
+                    .Take(5)
+                    .Cast<string>()
+                    .ToList();
+
+                return new HotelRecommendationDto
+                {
+                    HotelId = hotel.HotelId,
+                    HotelName = hotel.Name,
+                    Domain = hotel.Domain,
+                    Location = pub.Location,
+                    Region = pub.Region,
+                    Country = pub.Country,
+                    OfficialUrl = pub.OfficialUrl,
+                    SourceUrl = pub.SourceUrl,
+                    EditorialReviewStatus = pub.EditorialReviewStatus,
+                    EditorialReviewedAt = pub.EditorialReviewedAt,
+                    Categories = pub.Categories,
+                    MatchScore = best.Score,
+                    Reason = !string.IsNullOrWhiteSpace(best.Chunk.Title)
+                        ? best.Chunk.Title!
+                        : "Matched from approved hotel content",
+                    MatchingFeatures = features,
+                    Sources = sources,
+                    Rank = 0
+                };
+            })
+            .OrderByDescending(r => r.MatchScore)
+            .Take(maxResults)
+            .Select((r, index) =>
+            {
+                r.Rank = index + 1;
+                return r;
+            })
+            .ToList();
     }
 
     /// <summary>
@@ -358,7 +559,11 @@ public class ChatService
             .Select(kvp => new
             {
                 HotelName = hotelDetails[kvp.Key].Name,
-                Urls = kvp.Value.Select(r => r.Chunk.SourceUrl).Distinct().ToList()
+                Urls = kvp.Value.Select(r => r.Chunk.SourceUrl)
+                    .Where(u => !string.IsNullOrWhiteSpace(u))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(5)
+                    .ToList()
             })
             .Where(h => h.Urls.Count > 0)
             .ToList();
@@ -366,7 +571,7 @@ public class ChatService
         if (hotelSources.Count == 0) return string.Empty;
 
         var header = language == "de" ? "\n\n---\n**Quellen:**" : "\n\n---\n**Sources:**";
-        var links = "[to be done]"; // hotelSources.SelectMany(h => h.Urls.Select(url => $"- {h.HotelName}: {url}"));
+        var links = hotelSources.SelectMany(h => h.Urls.Select(url => $"- {h.HotelName}: {url}"));
         return header + "\n" + string.Join("\n", links);
     }
 
