@@ -94,6 +94,69 @@ public class PostgreSQLSystemPromptRepository : ISystemPromptRepository
         }
 
         _logger.LogInformation("Standard-SystemPrompts in Datenbank gespeichert ({Count} Einträge)", GetDefaultPrompts().Count);
+
+        // Soft-Upgrade: Conversation-Grounding in pipeline.answer nachziehen (ON CONFLICT DO NOTHING lässt alte Seeds stehen)
+        await EnsurePromptFragmentAsync(
+            conn,
+            "pipeline.answer",
+            "CONVERSATION GROUNDING",
+            """
+
+CONVERSATION GROUNDING:
+- Honor constraints from the conversation history: region (e.g. Tirol), focused hotel, and deixis (“dort”, “there”, “this hotel”).
+- If the user previously limited the search to a region, do not widen to other regions unless they clearly ask.
+- When they refer to a previously discussed hotel, keep that hotel in focus.
+""",
+            "GESPRÄCHSKONTEXT",
+            """
+
+GESPRÄCHSKONTEXT:
+- Respektiere Einschränkungen aus dem Gesprächsverlauf: Region (z. B. Tirol), Fokus-Hotel und Deixis („dort“, „dieses Hotel“).
+- Hat der Benutzer die Suche zuvor auf eine Region beschränkt, weite nicht auf andere Regionen aus, es sei denn, er fragt klar danach.
+- Bezieht er sich auf ein zuvor besprochenes Hotel, bleibe bei diesem Hotel.
+""",
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Hängt fehlende Prompt-Abschnitte an bestehende Inhalte an (ohne sie zu ersetzen).
+    /// </summary>
+    private async Task EnsurePromptFragmentAsync(
+        NpgsqlConnection conn,
+        string key,
+        string markerEn,
+        string fragmentEn,
+        string markerDe,
+        string fragmentDe,
+        CancellationToken cancellationToken)
+    {
+        const string sql = @"
+            UPDATE system_prompts
+            SET
+                content = CASE
+                    WHEN content NOT LIKE '%' || @markerEn || '%' THEN content || @fragmentEn
+                    ELSE content
+                END,
+                content_de = CASE
+                    WHEN content_de NOT LIKE '%' || @markerDe || '%' THEN content_de || @fragmentDe
+                    ELSE content_de
+                END,
+                updated_at = NOW()
+            WHERE key = @key
+              AND (
+                    content NOT LIKE '%' || @markerEn || '%'
+                 OR content_de NOT LIKE '%' || @markerDe || '%'
+              )";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("key", key);
+        cmd.Parameters.AddWithValue("markerEn", markerEn);
+        cmd.Parameters.AddWithValue("fragmentEn", fragmentEn);
+        cmd.Parameters.AddWithValue("markerDe", markerDe);
+        cmd.Parameters.AddWithValue("fragmentDe", fragmentDe);
+        var rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
+        if (rows > 0)
+            _logger.LogInformation("SystemPrompt '{Key}' um Conversation-Grounding ergänzt", key);
     }
 
     // -------------------------------------------------------------------------
@@ -440,6 +503,11 @@ STRICT rule - hotel recommendations:
 - You must NEVER recommend, mention, or suggest hotels that are NOT present in the database results.
 - Every hotel name you mention must come directly from the database results.
 
+CONVERSATION GROUNDING:
+- Honor constraints from the conversation history: region (e.g. Tirol), focused hotel, and deixis (“dort”, “there”, “this hotel”).
+- If the user previously limited the search to a region, do not widen to other regions unless they clearly ask.
+- When they refer to a previously discussed hotel, keep that hotel in focus.
+
 ALLOWED - general world knowledge:
 - You MAY use your general world knowledge to answer factual or logistical questions ABOUT the hotels found in the results.
 - Examples: distance from a hotel to a city, airport, or landmark; nearby restaurants, ski resorts, or points of interest; travel time; regional geography.
@@ -462,6 +530,11 @@ Verfasse eine hilfreiche, freundliche Antwort auf {language} auf Basis der berei
 STRIKTE Regel – Hotelempfehlungen:
 - Du darfst NIEMALS Hotels empfehlen, erwähnen oder vorschlagen, die NICHT in den Datenbankergebnissen enthalten sind.
 - Jeder von dir genannte Hotelname muss direkt aus den Datenbankergebnissen stammen.
+
+GESPRÄCHSKONTEXT:
+- Respektiere Einschränkungen aus dem Gesprächsverlauf: Region (z. B. Tirol), Fokus-Hotel und Deixis („dort“, „dieses Hotel“).
+- Hat der Benutzer die Suche zuvor auf eine Region beschränkt, weite nicht auf andere Regionen aus, es sei denn, er fragt klar danach.
+- Bezieht er sich auf ein zuvor besprochenes Hotel, bleibe bei diesem Hotel.
 
 ERLAUBT – Allgemeinwissen:
 - Du DARFST dein allgemeines Weltwissen nutzen, um sachliche oder logistische Fragen ZU den in den Ergebnissen gefundenen Hotels zu beantworten.

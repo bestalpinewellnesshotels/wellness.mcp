@@ -22,21 +22,8 @@ public static class ScriptFilter
 
     public static IReadOnlySet<string>? RestrictTo(string text)
     {
-        var counts = new Dictionary<LetterScript, int>();
-        var letters = 0;
-        foreach (var rune in text.EnumerateRunes())
-        {
-            if (!Rune.IsLetter(rune))
-            {
-                continue;
-            }
-
-            letters++;
-            var script = Classify(rune);
-            counts[script] = counts.GetValueOrDefault(script) + 1;
-        }
-
-        if (letters < 4)
+        var (counts, letters) = CountScripts(text);
+        if (letters < 4 || counts.Count == 0)
         {
             return null;
         }
@@ -55,6 +42,41 @@ public static class ScriptFilter
             LetterScript.Cyrillic => CyrillicLanguages,
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// True, wenn der Text überwiegend in einer nicht trainierten Schrift steht
+    /// (z. B. Japanisch, Chinesisch, Arabisch, Hebräisch, Thai).
+    /// </summary>
+    public static bool IsUnsupportedScript(string text)
+    {
+        var (counts, letters) = CountScripts(text);
+        if (letters < 4)
+        {
+            return false;
+        }
+
+        var other = counts.GetValueOrDefault(LetterScript.Other);
+        return other >= 4 && other >= letters * 0.4;
+    }
+
+    private static (Dictionary<LetterScript, int> Counts, int Letters) CountScripts(string text)
+    {
+        var counts = new Dictionary<LetterScript, int>();
+        var letters = 0;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (!Rune.IsLetter(rune))
+            {
+                continue;
+            }
+
+            letters++;
+            var script = Classify(rune);
+            counts[script] = counts.GetValueOrDefault(script) + 1;
+        }
+
+        return (counts, letters);
     }
 
     private static LetterScript Classify(Rune rune)

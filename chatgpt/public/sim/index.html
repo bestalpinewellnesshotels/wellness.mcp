@@ -348,7 +348,7 @@
     return row;
   }
 
-  function finishBot(row, answer, hotels) {
+  function finishBot(row, answer, hotels, toolPayload) {
     var bubble = row.querySelector('.bubble');
     bubble.classList.remove('typing');
     bubble.textContent = answer || '(leere Tool-Antwort)';
@@ -367,6 +367,18 @@
       });
       meta.appendChild(chip);
     });
+    var extra = (toolPayload && toolPayload.additionalSources) || [];
+    if (extra.length) {
+      var moreBtn = document.createElement('button');
+      moreBtn.type = 'button';
+      moreBtn.className = 'chip';
+      moreBtn.textContent = 'Weitere Quellen (' + extra.length + ')';
+      moreBtn.title = 'Nur in der Sim-UI als Button. In ChatGPT: „weitere Quellen“ tippen.';
+      moreBtn.addEventListener('click', function () {
+        send('weitere Quellen');
+      });
+      meta.appendChild(moreBtn);
+    }
     scrollChat();
   }
 
@@ -382,7 +394,30 @@
     stepsLog.push(step);
     if (traceEmpty) traceEmpty.style.display = 'none';
 
-    var key = step.agent + '|' + (step.phase || '');
+    var metaExtra = '';
+    if (step.meta) {
+      if (step.meta.vectorQuery) {
+        metaExtra += '<div class="detail"><strong>Vektor-Query:</strong> ' +
+          escapeHtml(String(step.meta.vectorQuery)) + '</div>';
+      }
+      if (Array.isArray(step.meta.scores) && step.meta.scores.length) {
+        metaExtra += '<div class="detail"><strong>Scores:</strong> ' +
+          escapeHtml(step.meta.scores.slice(0, 10).map(function (s) {
+            return (s.name || s.hotelId) + '=' + Number(s.score).toFixed(2);
+          }).join(', ')) + '</div>';
+      }
+      if (Array.isArray(step.meta.cited) && step.meta.cited.length) {
+        metaExtra += '<div class="detail"><strong>Quellen (gewichtete):</strong> ' +
+          escapeHtml(step.meta.cited.map(function (s) {
+            return (s.hotelName || '') + ' ' + Number(s.score).toFixed(2);
+          }).join('; ')) + '</div>';
+      }
+      if (Array.isArray(step.meta.additional) && step.meta.additional.length) {
+        metaExtra += '<div class="detail"><strong>Weitere Quellen:</strong> ' +
+          step.meta.additional.length + '</div>';
+      }
+    }
+
     if (step.phase === 'start') {
       var el = document.createElement('div');
       el.className = 'step running';
@@ -391,6 +426,7 @@
         '<div class="step-top"><span class="agent">' + escapeHtml(step.agent) +
         '</span><span class="dur status-running">…</span></div>' +
         '<div class="detail">' + escapeHtml(step.detail || '') + '</div>' +
+        metaExtra +
         '<div class="kind">' + escapeHtml(step.kind || 'other') + '</div>';
       traceList.appendChild(el);
       runningByAgent[step.agent] = el;
@@ -406,6 +442,7 @@
       escapeHtml(String(step.status || '')) + (duration ? ' · ' + duration : '') +
       '</span></div>' +
       '<div class="detail">' + escapeHtml(step.detail || '') + '</div>' +
+      metaExtra +
       '<div class="kind">' + escapeHtml(step.kind || 'other') + '</div>';
 
     if (existing) {
@@ -509,7 +546,7 @@
               } else if (eventName === 'done' && payload.totalMs != null) {
                 totalMsEl.textContent = payload.totalMs + ' ms';
               } else if (eventName === 'error') {
-                finishBot(botRow, 'Fehler: ' + (payload.error || payload.message || 'unbekannt'), []);
+                finishBot(botRow, 'Fehler: ' + (payload.error || payload.message || 'unbekannt'), [], null);
               }
             }
             eventName = 'message';
@@ -520,14 +557,15 @@
       if (toolResult && toolResult.result) {
         var r = toolResult.result;
         lastHotels = r.hotels || [];
-        finishBot(botRow, r.answer, lastHotels);
+        finishBot(botRow, r.answer, lastHotels, r);
         statusLine.textContent = 'Tool ' + (toolResult.tool || '') + ' · status=' + (r.status || '') +
+          (r.vectorQuery ? ' · q=' + String(r.vectorQuery).slice(0, 40) : '') +
           ' · Chat zeigt 1:1 das Feld answer';
       } else if (botRow.querySelector('.bubble').classList.contains('typing')) {
-        finishBot(botRow, 'Keine Tool-Antwort erhalten.', []);
+        finishBot(botRow, 'Keine Tool-Antwort erhalten.', [], null);
       }
     } catch (e) {
-      finishBot(botRow, 'Verbindungsfehler: ' + e.message, []);
+      finishBot(botRow, 'Verbindungsfehler: ' + e.message, [], null);
       statusLine.textContent = 'Fehler — läuft MCP und API?';
     } finally {
       busy = false;

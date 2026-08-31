@@ -92,13 +92,20 @@ public class ChatService
                 });
             var conversationHistory = BuildConversationHistory(session);
             var previousHotelIds = LoadRecommendedHotelIds(session);
+            var sessionConstraints = LoadConversationConstraints(session);
 
             var gates = await RunSafetyGatesAsync(
                 request.Requirements,
-                request.Language,
+                session,
                 logIntent: true,
                 ct,
                 trace);
+
+            if (gates.RejectReason == "language_clarify")
+            {
+                await SaveInteractionAsync(session, request.Requirements, gates.RejectMessage!, gates.Language, null, ct);
+                return AttachTrace(BuildPipelineResponse(true, gates.RejectMessage!, "language_clarify", request.Requirements, session.SessionId), trace);
+            }
 
             if (gates.RejectReason == "ethical_reject")
             {
@@ -113,13 +120,50 @@ public class ChatService
             }
 
             var language = gates.Language;
+            var userQuery = gates.TextToProcess;
+
+            // ─── „Weitere Quellen“ aus Session ─────────────────────────────────────
+            if (RecommendationPresentation.IsMoreSourcesRequest(userQuery))
+            {
+                var more = await TryBuildMoreSourcesAnswerAsync(session, language, ct);
+                if (more is not null)
+                {
+                    await SaveInteractionAsync(session, request.Requirements, more.FinalAnswer!, language, null, ct);
+                    return AttachTrace(more, trace);
+                }
+            }
+
+            // Aktive Hotels für Namens-Match / Regionsfilter (einmal laden)
+            var allActiveHotels = (await _hotelRepository.GetAllAsync(ct))
+                .Where(h => h.IsActive)
+                .ToList();
+            var constraints = ConversationConstraintHelper.Merge(
+                sessionConstraints, userQuery, allActiveHotels);
+            await SaveConversationConstraintsAsync(session, constraints, ct);
+            await trace.EmitStartAsync("Constraints", "other",
+                $"Region={constraints.Region ?? "—"}, Focus={constraints.FocusHotelName ?? "—"}");
+            await trace.EmitEndAsync("Constraints", "other",
+                $"region={constraints.Region}, focus={constraints.FocusHotelId}", 0, "ok",
+                new Dictionary<string, object?>
+                {
+                    ["region"] = constraints.Region,
+                    ["focusHotelId"] = constraints.FocusHotelId,
+                    ["focusHotelName"] = constraints.FocusHotelName
+                });
+
+            // ─── Allgemeine Katalog-Frage (optional regionsgefiltert) ─────────────
+            if (RecommendationPresentation.IsBroadCatalogQuery(userQuery))
+            {
+                return await ProcessCatalogListingAsync(
+                    request, session, language, constraints, allActiveHotels, trace, ct);
+            }
 
             // ─── Search: Query für Vektorsuche ─────────────────────────────────────
-            // Bei Deutsch Original nutzen, sonst LLM-Rewrite.
+            // Bei Deutsch Original nutzen, sonst LLM-Rewrite — dann Session-Constraints anreichern.
             string queryForSearch;
             if (language.Equals("de", StringComparison.OrdinalIgnoreCase))
             {
-                queryForSearch = request.Requirements;
+                queryForSearch = userQuery;
                 _logger.LogInformation("[Search] Query bereits Deutsch – kein Translate-LLM");
                 await trace.EmitStartAsync("Translate", "llm", "Skip (Query bereits Deutsch)");
                 await trace.EmitEndAsync("Translate", "llm", "übersprungen", 0, "skip",
@@ -134,10 +178,24 @@ public class ChatService
                     async () =>
                     {
                         var translatePrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.translate_to_german", ct);
-                        var q = await _chatCompletionService.TranslateToGermanAsync(request.Requirements, translatePrompt, ct);
+                        var q = await _chatCompletionService.TranslateToGermanAsync(userQuery, translatePrompt, ct);
                         _logger.LogInformation("[Search] Query optimiert: Original='{Original}' → Suche='{Optimized}'",
-                            request.Requirements, q);
+                            userQuery, q);
                         return (q, "ok", $"→ {Truncate(q, 80)}", new Dictionary<string, object?> { ["query"] = q });
+                    });
+            }
+
+            var rawQuery = queryForSearch;
+            queryForSearch = ConversationConstraintHelper.EnrichSearchQuery(queryForSearch, constraints);
+            if (!string.Equals(rawQuery, queryForSearch, StringComparison.Ordinal))
+            {
+                _logger.LogInformation("[Search] Query mit Constraints: '{Raw}' → '{Enriched}'", rawQuery, queryForSearch);
+                await trace.EmitStartAsync("QueryEnrich", "search", "Session-Constraints in Vektor-Query");
+                await trace.EmitEndAsync("QueryEnrich", "search", Truncate(queryForSearch, 100), 0, "ok",
+                    new Dictionary<string, object?>
+                    {
+                        ["raw"] = rawQuery,
+                        ["enriched"] = queryForSearch
                     });
             }
 
@@ -149,29 +207,35 @@ public class ChatService
             var allResults = await trace.MeasureAsync(
                 "VectorSearch",
                 "search",
-                $"SearchAllHotels (topK={maxResults * 2}, minScore={request.MinConfidence})",
+                $"Query: {Truncate(queryForSearch, 100)}",
                 async () =>
                 {
                     var results = await _vectorStore.SearchAllHotelsAsync(
                         queryForSearch,
-                        maxResults * 2,
+                        Math.Max(maxResults * 2, 10),
                         request.MinConfidence,
                         ct);
                     var chunks = results.Values.Sum(v => v.Count);
                     return (results, "ok", $"{results.Count} Hotels, {chunks} Chunks",
-                        new Dictionary<string, object?> { ["hotels"] = results.Count, ["chunks"] = chunks });
+                        new Dictionary<string, object?>
+                        {
+                            ["vectorQuery"] = queryForSearch,
+                            ["hotels"] = results.Count,
+                            ["chunks"] = chunks
+                        });
                 });
 
-            // 4c. Gezielte Detail-Suche für Hotels aus vorherigem Gesprächsverlauf
-            if (previousHotelIds.Count > 0)
+            // 4c. Gezielte Detail-Suche: Fokus-Hotel zuerst, dann letzte Empfehlungen
+            var followUpIds = BuildFollowUpHotelIds(constraints, previousHotelIds, maxTake: 3);
+            if (followUpIds.Count > 0)
             {
                 await trace.MeasureAsync(
                     "FollowUpSearch",
                     "search",
-                    $"Detail-Suche für {Math.Min(3, previousHotelIds.Count)} Session-Hotels",
+                    $"Detail-Suche für {followUpIds.Count} Session-Hotels",
                     async () =>
                     {
-                        foreach (var prevHotelId in previousHotelIds.Take(3))
+                        foreach (var prevHotelId in followUpIds)
                         {
                             var detailChunks = await _vectorStore.SearchAsync(
                                 prevHotelId, queryForSearch, maxResults, request.MinConfidence, ct);
@@ -188,7 +252,8 @@ public class ChatService
                                 }
                             }
                         }
-                        return (true, "ok", "Follow-up-Suche fertig", (Dictionary<string, object?>?)null);
+                        return (true, "ok", "Follow-up-Suche fertig",
+                            new Dictionary<string, object?> { ["hotelIds"] = followUpIds });
                     });
             }
 
@@ -210,13 +275,63 @@ public class ChatService
                         new Dictionary<string, object?> { ["activeHotels"] = map.Count });
                 });
 
-            // Nur Ergebnisse von aktiven, bekannten Hotels behalten
+            // Nur Ergebnisse von aktiven, bekannten Hotels behalten; optional Region aus Session
             var validResults = allResults
                 .Where(kvp => hotelDetails.ContainsKey(kvp.Key))
                 .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
+            if (ConversationConstraintHelper.ShouldFilterResultsByRegion(constraints, userQuery))
+            {
+                var before = validResults.Count;
+                validResults = validResults
+                    .Where(kvp => ConversationConstraintHelper.HotelMatchesRegion(
+                        hotelDetails[kvp.Key], constraints.Region))
+                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+                // Fokus-Hotel nie wegfiltern
+                if (constraints.HasFocus &&
+                    allResults.TryGetValue(constraints.FocusHotelId!, out var focusChunks) &&
+                    hotelDetails.ContainsKey(constraints.FocusHotelId!) &&
+                    !validResults.ContainsKey(constraints.FocusHotelId!))
+                {
+                    validResults[constraints.FocusHotelId!] = focusChunks;
+                }
+
+                await trace.EmitStartAsync("RegionFilter", "search",
+                    $"Filter Region={constraints.Region}");
+                await trace.EmitEndAsync("RegionFilter", "search",
+                    $"{before} → {validResults.Count} Hotels", 0, "ok",
+                    new Dictionary<string, object?>
+                    {
+                        ["region"] = constraints.Region,
+                        ["before"] = before,
+                        ["after"] = validResults.Count
+                    });
+            }
+
             _logger.LogInformation("[SearchAgent] {HotelCount} Hotels, {ChunkCount} Chunks",
                 validResults.Count, validResults.Values.Sum(v => v.Count));
+
+            var scoreSummary = RecommendationPresentation.SummarizeHotelScores(validResults, hotelDetails);
+            await trace.EmitStartAsync("HotelScores", "search",
+                $"Vektor-Treffer: {scoreSummary.Count} Hotels");
+            await trace.EmitEndAsync(
+                "HotelScores",
+                "search",
+                string.Join("; ", scoreSummary.Take(8).Select(s => $"{s.Name}={s.Score:0.00}")),
+                0,
+                "ok",
+                new Dictionary<string, object?>
+                {
+                    ["vectorQuery"] = queryForSearch,
+                    ["scores"] = scoreSummary
+                        .Select(s => new Dictionary<string, object?>
+                        {
+                            ["hotelId"] = s.HotelId,
+                            ["name"] = s.Name,
+                            ["score"] = Math.Round(s.Score, 4)
+                        })
+                        .ToList()
+                });
 
             // ─── Step 5: AnswerAgent ──────────────────────────────────────────────
             if (validResults.Count == 0)
@@ -232,7 +347,7 @@ public class ChatService
                         var text = await _chatCompletionService.GenerateResponseAsync(
                             noResultsPrompt,
                             string.Empty,
-                            request.Requirements,
+                            userQuery,
                             conversationHistory,
                             language,
                             "User query: {userQuery}",
@@ -244,8 +359,22 @@ public class ChatService
                 return AttachTrace(BuildPipelineResponse(false, noResultsAnswer, "no_results", request.Requirements, session.SessionId), trace);
             }
 
-            // Strukturierte Empfehlungen (nach Score gerankt, auf MaxResults begrenzt)
+            // Strukturierte Empfehlungen: bei > maxResults die nächstliegenden (höchster Score)
             var recommendations = BuildRecommendations(validResults, hotelDetails, maxResults);
+            if (scoreSummary.Count > maxResults)
+            {
+                await trace.EmitStartAsync("TopK", "search",
+                    $"{scoreSummary.Count} Treffer → Top {maxResults} nach Similarity");
+                await trace.EmitEndAsync("TopK", "search",
+                    string.Join(", ", recommendations.Select(r => $"{r.HotelName}={r.MatchScore:0.00}")),
+                    0, "ok",
+                    new Dictionary<string, object?>
+                    {
+                        ["selected"] = recommendations.Count,
+                        ["candidates"] = scoreSummary.Count
+                    });
+            }
+
             var rankedResults = recommendations
                 .ToDictionary(
                     r => r.HotelId,
@@ -283,7 +412,7 @@ public class ChatService
                     {
                         var relevancePrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.relevance_check", ct);
                         var relevant = await _chatCompletionService.IsContextRelevantAsync(
-                            request.Requirements, context, relevancePrompt, ct);
+                            userQuery, context, relevancePrompt, ct);
                         _logger.LogInformation("[RelevanceAgent] Ergebnis: {Result} (TopScore={TopScore:0.00})",
                             relevant ? "YES" : "NO", topScore);
                         return (relevant, relevant ? "ok" : "reject", relevant ? "YES" : "NO",
@@ -304,7 +433,7 @@ public class ChatService
                         var text = await _chatCompletionService.GenerateResponseAsync(
                             noResultsPrompt2,
                             string.Empty,
-                            request.Requirements,
+                            userQuery,
                             conversationHistory,
                             language,
                             "User query: {userQuery}",
@@ -316,7 +445,7 @@ public class ChatService
                 return AttachTrace(BuildPipelineResponse(false, noResultsAnswer2, "no_results", request.Requirements, session.SessionId), trace);
             }
 
-            var answer = await trace.MeasureAsync(
+            var answerText = await trace.MeasureAsync(
                 "Answer",
                 "llm",
                 "Answer-Agent (LLM)",
@@ -327,19 +456,50 @@ public class ChatService
                     var text = await _chatCompletionService.GenerateResponseAsync(
                         answerPrompt,
                         context,
-                        request.Requirements,
+                        userQuery,
                         conversationHistory,
                         language,
                         PipelineContextWrapper,
                         ct);
-                    text += BuildSourcesSection(rankedResults, hotelDetails, language);
-                    return (text, "ok", $"Antwort {text.Length} Zeichen, {recommendations.Count} Hotels",
+                    return (text, "ok", $"Antwort {text.Length} Zeichen",
                         new Dictionary<string, object?> { ["hotels"] = recommendations.Count, ["chars"] = text.Length });
                 });
 
-            // Interaktion + empfohlene Hotel-IDs in Session speichern
+            var (sourceSection, citedSources, additionalSources) = RecommendationPresentation.BuildWeightedSources(
+                answerText, rankedResults, hotelDetails, language);
+            var answer = answerText + sourceSection;
+
+            await trace.EmitStartAsync("Sources", "other",
+                $"Quellen gewichtet (max {RecommendationPresentation.MaxSourcesPerHotel}/Hotel)");
+            await trace.EmitEndAsync(
+                "Sources",
+                "other",
+                string.Join("; ", citedSources.Select(p => $"{p.HotelName}={p.Score:0.00}")),
+                0,
+                "ok",
+                new Dictionary<string, object?>
+                {
+                    ["vectorQuery"] = queryForSearch,
+                    ["cited"] = citedSources.Select(ToSourceMeta).ToList(),
+                    ["additional"] = additionalSources.Select(ToSourceMeta).ToList()
+                });
+
+            // Interaktion + empfohlene Hotel-IDs + pending sources speichern
             var recommendedIds = recommendations.Select(r => r.HotelId).ToList();
+            if (recommendedIds.Count == 1 && hotelDetails.TryGetValue(recommendedIds[0], out var soleHotel))
+            {
+                constraints.FocusHotelId = soleHotel.HotelId;
+                constraints.FocusHotelName = soleHotel.Name;
+                await SaveConversationConstraintsAsync(session, constraints, ct);
+            }
+            else if (constraints.HasFocus && recommendedIds.Contains(constraints.FocusHotelId!))
+            {
+                // Fokus beibehalten
+                await SaveConversationConstraintsAsync(session, constraints, ct);
+            }
+
             await SaveInteractionAsync(session, request.Requirements, answer, language, recommendedIds, ct);
+            await SavePendingSourcesAsync(session, additionalSources, ct);
 
             return AttachTrace(new HotelRecommendationResponseDto
             {
@@ -349,7 +509,16 @@ public class ChatService
                 Requirements = request.Requirements,
                 Recommendations = recommendations,
                 SessionId = session.SessionId,
-                Timestamp = DateTime.UtcNow
+                Timestamp = DateTime.UtcNow,
+                VectorQuery = queryForSearch,
+                CitedSources = citedSources,
+                AdditionalSources = additionalSources,
+                HotelScores = scoreSummary.Select(s => new HotelScoreDto
+                {
+                    HotelId = s.HotelId,
+                    HotelName = s.Name,
+                    Score = s.Score
+                }).ToList()
             }, trace);
         }
         catch (Exception ex)
@@ -381,45 +550,60 @@ public class ChatService
         return 3; // Default
     }
 
-    private sealed record SafetyGateResult(string Language, string? RejectReason, string? RejectMessage);
+    private sealed record SafetyGateResult(
+        string Language,
+        string? RejectReason,
+        string? RejectMessage,
+        string TextToProcess);
 
     /// <summary>
     /// Gemeinsame Language-/Ethical-/Intent-Gates für Recommend und Hotel-Details.
+    /// Sprache wird nach jeder User-Eingabe klassifiziert (kein Client-Override).
     /// </summary>
     private async Task<SafetyGateResult> RunSafetyGatesAsync(
         string text,
-        string? languageOverride,
+        ChatSession session,
         bool logIntent,
         CancellationToken ct,
         PipelineTraceCollector? trace = null)
     {
-        string language;
-        if (!string.IsNullOrWhiteSpace(languageOverride))
+        var existingLanguage = LoadConversationLanguage(session);
+        var details = _languageDetector.Classify(text);
+        var decision = ConversationLanguagePolicy.Resolve(details, existingLanguage, text);
+        await SaveConversationLanguageAsync(session, decision.State, ct);
+
+        var language = NormalizeLanguageCode(decision.Language);
+        var rankedPreview = string.Join(", ",
+            details.Ranked.Take(4).Select(s => $"{s.Code}:{s.Probability:0.00}"));
+        _logger.LogInformation(
+            "[Language] {Source} → {Language} ({Ranked})",
+            decision.Source, language, rankedPreview);
+
+        if (trace != null)
         {
-            language = NormalizeLanguageCode(languageOverride);
-            _logger.LogInformation("[Language] vorgegeben: {Language}", language);
-            if (trace != null)
-            {
-                await trace.EmitStartAsync("Language", "classifier", $"vorgegeben: {language}");
-                await trace.EmitEndAsync("Language", "classifier", language, 0, "ok",
-                    new Dictionary<string, object?> { ["language"] = language, ["source"] = "override" });
-            }
-        }
-        else
-        {
-            language = await (trace?.MeasureAsync(
+            await trace.EmitStartAsync("Language", "classifier", "Spracherkennung (lokal, jede Eingabe)");
+            await trace.EmitEndAsync(
                 "Language",
                 "classifier",
-                "Spracherkennung (lokal)",
-                async () =>
+                $"{decision.Source}:{language}",
+                0,
+                "ok",
+                new Dictionary<string, object?>
                 {
-                    var code = NormalizeLanguageCode(_languageDetector.Detect(text));
-                    _logger.LogInformation("[Language] erkannt: {Language}", code);
-                    return (code, "ok", code, new Dictionary<string, object?> { ["language"] = code });
-                }) ?? Task.FromResult(NormalizeLanguageCode(_languageDetector.Detect(text))));
-            if (trace == null)
-                _logger.LogInformation("[Language] erkannt: {Language}", language);
+                    ["language"] = language,
+                    ["source"] = decision.Source,
+                    ["ambiguous"] = details.IsAmbiguous,
+                    ["unrecognized"] = details.IsUnrecognizedScript,
+                    ["ranked"] = rankedPreview
+                });
         }
+
+        if (decision.NeedsClarification)
+        {
+            return new SafetyGateResult(language, "language_clarify", decision.ClarificationMessage, decision.TextToProcess);
+        }
+
+        var queryText = decision.TextToProcess;
 
         var ethicalOk = await (trace?.MeasureAsync(
             "Ethical",
@@ -427,9 +611,9 @@ public class ChatService
             "Ethical-Classifier (lokal)",
             async () =>
             {
-                var ok = _ethicalClassifier.IsEthical(text);
+                var ok = _ethicalClassifier.IsEthical(queryText);
                 return (ok, ok ? "ok" : "reject", ok ? "OK" : "REJECT", (Dictionary<string, object?>?)null);
-            }) ?? Task.FromResult(_ethicalClassifier.IsEthical(text)));
+            }) ?? Task.FromResult(_ethicalClassifier.IsEthical(queryText)));
 
         if (!ethicalOk)
         {
@@ -437,7 +621,7 @@ public class ChatService
             var msg = language == "en"
                 ? "Your message could not be processed. Please rephrase your question in a polite and respectful manner."
                 : "Ihre Anfrage konnte nicht verarbeitet werden. Bitte formulieren Sie Ihre Frage höflich und respektvoll.";
-            return new SafetyGateResult(language, "ethical_reject", msg);
+            return new SafetyGateResult(language, "ethical_reject", msg, queryText);
         }
 
         _logger.LogInformation("[Ethical] OK");
@@ -448,23 +632,23 @@ public class ChatService
             "Intent-Classifier (lokal)",
             async () =>
             {
-                var ok = _intentClassifier.IsHotelWellnessQuery(text);
+                var ok = _intentClassifier.IsHotelWellnessQuery(queryText);
                 if (logIntent)
                 {
                     await _queryLogger.LogIntentCheckAsync(
-                        query: text,
+                        query: queryText,
                         language: language,
                         promptKey: "classifier.intent",
                         promptContent: "local BinaryTextClassifier (in_scope/out_of_scope)",
                         isHotelQuery: ok);
                 }
                 return (ok, ok ? "ok" : "reject", ok ? "in_scope" : "out_of_scope", (Dictionary<string, object?>?)null);
-            }) ?? Task.FromResult(_intentClassifier.IsHotelWellnessQuery(text)));
+            }) ?? Task.FromResult(_intentClassifier.IsHotelWellnessQuery(queryText)));
 
         if (trace == null && logIntent)
         {
             await _queryLogger.LogIntentCheckAsync(
-                query: text,
+                query: queryText,
                 language: language,
                 promptKey: "classifier.intent",
                 promptContent: "local BinaryTextClassifier (in_scope/out_of_scope)",
@@ -477,11 +661,11 @@ public class ChatService
             var msg = language == "en"
                 ? "This assistant exclusively provides information about BestWellness wellness hotels. Your request is outside the scope of this service."
                 : "Dieser Assistent beantwortet ausschließlich Fragen zu BestWellness-Wellnesshotels. Ihre Anfrage liegt außerhalb des Themenbereichs.";
-            return new SafetyGateResult(language, "out_of_scope", msg);
+            return new SafetyGateResult(language, "out_of_scope", msg, queryText);
         }
 
         _logger.LogInformation("[Intent] in_scope");
-        return new SafetyGateResult(language, null, null);
+        return new SafetyGateResult(language, null, null, queryText);
     }
 
     /// <summary>
@@ -573,18 +757,33 @@ public class ChatService
                 }, trace);
             }
 
+            var session = await GetOrCreatePipelineSessionAsync(request.SessionId, ct);
+
             var gates = await RunSafetyGatesAsync(
                 request.Message,
-                request.Language,
+                session,
                 logIntent: false,
                 ct,
                 trace);
+
+            if (gates.RejectReason == "language_clarify")
+            {
+                return AttachTrace(new ChatResponseDto
+                {
+                    SessionId = session.SessionId,
+                    Message = gates.RejectMessage!,
+                    FinalAnswer = gates.RejectMessage!,
+                    ResponseType = "language_clarify",
+                    Success = true,
+                    Language = gates.Language
+                }, trace);
+            }
 
             if (gates.RejectReason is not null)
             {
                 return AttachTrace(new ChatResponseDto
                 {
-                    SessionId = request.SessionId ?? string.Empty,
+                    SessionId = session.SessionId,
                     Message = gates.RejectMessage!,
                     FinalAnswer = gates.RejectMessage!,
                     ResponseType = gates.RejectReason,
@@ -595,11 +794,12 @@ public class ChatService
             }
 
             var language = gates.Language;
+            var userQuery = gates.TextToProcess;
 
             string queryForSearch;
             if (language.Equals("de", StringComparison.OrdinalIgnoreCase))
             {
-                queryForSearch = request.Message;
+                queryForSearch = userQuery;
                 await trace.EmitStartAsync("Translate", "llm", "Skip (Query bereits Deutsch)");
                 await trace.EmitEndAsync("Translate", "llm", "übersprungen", 0, "skip");
             }
@@ -612,7 +812,7 @@ public class ChatService
                     async () =>
                     {
                         var translatePrompt = await _systemPromptService.GetContentOrNullAsync("pipeline.translate_to_german", ct);
-                        var q = await _chatCompletionService.TranslateToGermanAsync(request.Message, translatePrompt, ct);
+                        var q = await _chatCompletionService.TranslateToGermanAsync(userQuery, translatePrompt, ct);
                         return (q, "ok", Truncate(q, 80), new Dictionary<string, object?> { ["query"] = q });
                     });
             }
@@ -643,7 +843,7 @@ public class ChatService
                     : $"No approved information is available for “{hotel.Name}” for this question.";
                 return AttachTrace(new ChatResponseDto
                 {
-                    SessionId = request.SessionId ?? string.Empty,
+                    SessionId = session.SessionId,
                     Message = noData,
                     FinalAnswer = noData,
                     ResponseType = "no_data",
@@ -672,7 +872,7 @@ public class ChatService
                     var text = await _chatCompletionService.GenerateResponseAsync(
                         answerPrompt,
                         context,
-                        request.Message,
+                        userQuery,
                         new List<(string Role, string Content)>(),
                         language,
                         PipelineContextWrapper,
@@ -690,7 +890,7 @@ public class ChatService
 
             return AttachTrace(new ChatResponseDto
             {
-                SessionId = request.SessionId ?? string.Empty,
+                SessionId = session.SessionId,
                 Message = answer,
                 FinalAnswer = answer,
                 ResponseType = "final_answer",
@@ -715,6 +915,207 @@ public class ChatService
             }, trace);
         }
     }
+
+    /// <summary>
+    /// Allgemeine Katalog-Antwort: aktive Hotels (optional nach Region), zufällige Reihenfolge.
+    /// Speichert keine empfohlenen Hotel-IDs (sonst Follow-up auf 3 zufällige Katalog-Hotels).
+    /// </summary>
+    private async Task<HotelRecommendationResponseDto> ProcessCatalogListingAsync(
+        HotelRecommendationRequestDto request,
+        ChatSession session,
+        string language,
+        ConversationConstraints constraints,
+        IReadOnlyList<Hotel> allActiveHotels,
+        PipelineTraceCollector trace,
+        CancellationToken ct)
+    {
+        var region = constraints.Region
+                     ?? ConversationConstraintHelper.ExtractRegion(request.Requirements);
+        if (!string.IsNullOrWhiteSpace(region) && constraints.Region != region)
+        {
+            constraints.Region = region;
+            await SaveConversationConstraintsAsync(session, constraints, ct);
+        }
+
+        var hotels = ConversationConstraintHelper.FilterByRegion(allActiveHotels, region);
+        // Falls Region-Metadaten lückenhaft: Vektorsuche nach Region ergänzen
+        if (!string.IsNullOrWhiteSpace(region) && hotels.Count < allActiveHotels.Count)
+        {
+            try
+            {
+                var vectorHits = await _vectorStore.SearchAllHotelsAsync(region, 20, 0.35, ct);
+                var byId = allActiveHotels.ToDictionary(h => h.HotelId, StringComparer.OrdinalIgnoreCase);
+                foreach (var hotelId in vectorHits.Keys)
+                {
+                    if (byId.TryGetValue(hotelId, out var h) &&
+                        hotels.All(x => !x.HotelId.Equals(h.HotelId, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        // Nur aufnehmen wenn Metadaten zur Region passen ODER Metadaten leer
+                        var metaEmpty = string.IsNullOrWhiteSpace(h.Region) && string.IsNullOrWhiteSpace(h.Location);
+                        if (metaEmpty || ConversationConstraintHelper.HotelMatchesRegion(h, region))
+                            hotels.Add(h);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Katalog: Vektor-Ergänzung für Region {Region} fehlgeschlagen", region);
+            }
+        }
+
+        await trace.EmitStartAsync("Catalog", "db",
+            region == null ? "Alle aktiven Hotels (Katalog)" : $"Katalog Region={region}");
+        await trace.EmitEndAsync("Catalog", "db",
+            $"{hotels.Count} Hotels", 0, "ok",
+            new Dictionary<string, object?>
+            {
+                ["count"] = hotels.Count,
+                ["region"] = region
+            });
+
+        var shuffled = RecommendationPresentation.Shuffle(hotels);
+        await trace.EmitStartAsync("CatalogShuffle", "other", "Zufallsreihenfolge");
+        await trace.EmitEndAsync("CatalogShuffle", "other",
+            shuffled.Count == 0
+                ? "(leer)"
+                : string.Join(", ", shuffled.Take(5).Select(h => h.Name)) + (shuffled.Count > 5 ? "…" : ""),
+            0, "ok");
+
+        var answer = RecommendationPresentation.BuildCatalogAnswer(shuffled, language, region);
+        var recommendations = shuffled.Select((h, index) =>
+        {
+            var pub = HotelPublicDto.FromHotel(h);
+            return new HotelRecommendationDto
+            {
+                HotelId = h.HotelId,
+                HotelName = h.Name,
+                Domain = h.Domain,
+                Location = pub.Location,
+                Region = pub.Region,
+                Country = pub.Country,
+                OfficialUrl = pub.OfficialUrl,
+                SourceUrl = pub.SourceUrl,
+                EditorialReviewStatus = pub.EditorialReviewStatus,
+                EditorialReviewedAt = pub.EditorialReviewedAt,
+                Categories = pub.Categories,
+                MatchScore = 0,
+                Reason = "catalog",
+                MatchingFeatures = [],
+                Sources = string.IsNullOrWhiteSpace(h.ResolveOfficialUrl())
+                    ? []
+                    : [h.ResolveOfficialUrl()!],
+                Rank = index + 1
+            };
+        }).ToList();
+
+        // Keine __recommended_hotels__ für den ganzen Katalog — Follow-up nutzt Constraints.
+        await SaveInteractionAsync(session, request.Requirements, answer, language, null, ct);
+
+        return AttachTrace(new HotelRecommendationResponseDto
+        {
+            Success = true,
+            FinalAnswer = answer,
+            ResponseType = "catalog",
+            Requirements = request.Requirements,
+            Recommendations = recommendations,
+            SessionId = session.SessionId,
+            Timestamp = DateTime.UtcNow,
+            VectorQuery = null,
+            CitedSources = [],
+            AdditionalSources = [],
+            HotelScores = []
+        }, trace);
+    }
+
+    private async Task<HotelRecommendationResponseDto?> TryBuildMoreSourcesAnswerAsync(
+        ChatSession session,
+        string language,
+        CancellationToken ct)
+    {
+        var pending = LoadPendingSources(session);
+        if (pending.Count == 0)
+            return null;
+
+        await ClearPendingSourcesAsync(session, ct);
+
+        var header = language.Equals("en", StringComparison.OrdinalIgnoreCase)
+            ? "**Additional sources:**"
+            : "**Weitere Quellen:**";
+        var lines = pending.Select(c =>
+            $"- {c.HotelName} ({c.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}): {c.Url}");
+        var answer = header + "\n" + string.Join("\n", lines);
+
+        return new HotelRecommendationResponseDto
+        {
+            Success = true,
+            FinalAnswer = answer,
+            ResponseType = "more_sources",
+            SessionId = session.SessionId,
+            CitedSources = pending,
+            AdditionalSources = [],
+            Timestamp = DateTime.UtcNow
+        };
+    }
+
+    private const string PendingSourcesPrefix = "__pending_sources__:";
+
+    private static List<SourceCitationDto> LoadPendingSources(ChatSession session)
+    {
+        var msg = session.Messages
+            .Where(m => m.Role == MessageRole.System && m.Content.StartsWith(PendingSourcesPrefix))
+            .MaxBy(m => m.Timestamp);
+        if (msg is null) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<List<SourceCitationDto>>(msg.Content[PendingSourcesPrefix.Length..])
+                   ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private async Task SavePendingSourcesAsync(
+        ChatSession session,
+        List<SourceCitationDto> additional,
+        CancellationToken ct)
+    {
+        session.Messages.RemoveAll(m =>
+            m.Role == MessageRole.System && m.Content.StartsWith(PendingSourcesPrefix));
+
+        if (additional.Count == 0)
+        {
+            await _sessionRepository.UpdateAsync(session, ct);
+            return;
+        }
+
+        session.Messages.Add(new ChatMessage
+        {
+            MessageId = Guid.NewGuid().ToString(),
+            SessionId = session.SessionId,
+            Role = MessageRole.System,
+            Content = PendingSourcesPrefix + JsonSerializer.Serialize(additional),
+            Timestamp = DateTime.UtcNow
+        });
+        session.LastActivityAt = DateTime.UtcNow;
+        await _sessionRepository.UpdateAsync(session, ct);
+    }
+
+    private async Task ClearPendingSourcesAsync(ChatSession session, CancellationToken ct)
+    {
+        session.Messages.RemoveAll(m =>
+            m.Role == MessageRole.System && m.Content.StartsWith(PendingSourcesPrefix));
+        await _sessionRepository.UpdateAsync(session, ct);
+    }
+
+    private static Dictionary<string, object?> ToSourceMeta(SourceCitationDto c) => new()
+    {
+        ["hotelId"] = c.HotelId,
+        ["hotelName"] = c.HotelName,
+        ["url"] = c.Url,
+        ["score"] = Math.Round(c.Score, 4)
+    };
 
     /// <summary>
     /// Baut den Kontext für den AnswerAgent aus den Vektorsuchergebnissen.
@@ -801,31 +1202,17 @@ public class ChatService
 
     /// <summary>
     /// Hängt Quellenangaben deterministisch ans Ende der Antwort.
+    /// Deprecated: nutze RecommendationPresentation.BuildWeightedSources.
     /// </summary>
     private static string BuildSourcesSection(
         Dictionary<string, List<(ContentChunk Chunk, double Score)>> results,
         Dictionary<string, Hotel> hotelDetails,
         string language)
     {
-        var hotelSources = results
-            .Where(kvp => hotelDetails.ContainsKey(kvp.Key))
-            .Select(kvp => new
-            {
-                HotelName = hotelDetails[kvp.Key].Name,
-                Urls = kvp.Value.Select(r => r.Chunk.SourceUrl)
-                    .Where(u => !string.IsNullOrWhiteSpace(u))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .Take(5)
-                    .ToList()
-            })
-            .Where(h => h.Urls.Count > 0)
-            .ToList();
-
-        if (hotelSources.Count == 0) return string.Empty;
-
-        var header = language == "de" ? "\n\n---\n**Quellen:**" : "\n\n---\n**Sources:**";
-        var links = hotelSources.SelectMany(h => h.Urls.Select(url => $"- {h.HotelName}: {url}"));
-        return header + "\n" + string.Join("\n", links);
+        var answerStub = string.Join(" ", hotelDetails.Values.Select(h => h.Name));
+        var (section, _, _) = RecommendationPresentation.BuildWeightedSources(
+            answerStub, results, hotelDetails, language);
+        return section;
     }
 
     private static HotelRecommendationResponseDto BuildPipelineResponse(
@@ -912,6 +1299,89 @@ public class ChatService
         catch { return []; }
     }
 
+    private static ConversationConstraints? LoadConversationConstraints(ChatSession session)
+    {
+        var msg = session.Messages
+            .Where(m => m.Role == MessageRole.System &&
+                        m.Content.StartsWith(ConversationConstraintHelper.SessionPrefix, StringComparison.Ordinal))
+            .MaxBy(m => m.Timestamp);
+        if (msg is null) return null;
+        return ConversationConstraintHelper.Deserialize(
+            msg.Content[ConversationConstraintHelper.SessionPrefix.Length..]);
+    }
+
+    private static ConversationLanguageState? LoadConversationLanguage(ChatSession session)
+    {
+        var msg = session.Messages
+            .Where(m => m.Role == MessageRole.System &&
+                        m.Content.StartsWith(ConversationLanguagePolicy.SessionPrefix, StringComparison.Ordinal))
+            .MaxBy(m => m.Timestamp);
+        if (msg is null) return null;
+        return ConversationLanguagePolicy.Deserialize(
+            msg.Content[ConversationLanguagePolicy.SessionPrefix.Length..]);
+    }
+
+    private async Task SaveConversationLanguageAsync(
+        ChatSession session,
+        ConversationLanguageState state,
+        CancellationToken ct)
+    {
+        session.Messages.RemoveAll(m =>
+            m.Role == MessageRole.System &&
+            m.Content.StartsWith(ConversationLanguagePolicy.SessionPrefix, StringComparison.Ordinal));
+
+        session.Messages.Add(new ChatMessage
+        {
+            MessageId = Guid.NewGuid().ToString(),
+            SessionId = session.SessionId,
+            Role = MessageRole.System,
+            Content = ConversationLanguagePolicy.SessionPrefix +
+                      ConversationLanguagePolicy.Serialize(state),
+            Timestamp = DateTime.UtcNow
+        });
+        session.LastActivityAt = DateTime.UtcNow;
+        await _sessionRepository.UpdateAsync(session, ct);
+    }
+
+    private async Task SaveConversationConstraintsAsync(
+        ChatSession session,
+        ConversationConstraints constraints,
+        CancellationToken ct)
+    {
+        session.Messages.RemoveAll(m =>
+            m.Role == MessageRole.System &&
+            m.Content.StartsWith(ConversationConstraintHelper.SessionPrefix, StringComparison.Ordinal));
+
+        session.Messages.Add(new ChatMessage
+        {
+            MessageId = Guid.NewGuid().ToString(),
+            SessionId = session.SessionId,
+            Role = MessageRole.System,
+            Content = ConversationConstraintHelper.SessionPrefix +
+                      ConversationConstraintHelper.Serialize(constraints),
+            Timestamp = DateTime.UtcNow
+        });
+        session.LastActivityAt = DateTime.UtcNow;
+        await _sessionRepository.UpdateAsync(session, ct);
+    }
+
+    private static List<string> BuildFollowUpHotelIds(
+        ConversationConstraints constraints,
+        List<string> previousHotelIds,
+        int maxTake)
+    {
+        var ids = new List<string>();
+        if (constraints.HasFocus)
+            ids.Add(constraints.FocusHotelId!);
+        foreach (var id in previousHotelIds)
+        {
+            if (ids.Count >= maxTake) break;
+            if (!ids.Contains(id, StringComparer.OrdinalIgnoreCase))
+                ids.Add(id);
+        }
+        return ids.Take(maxTake).ToList();
+    }
+
     private async Task SaveInteractionAsync(
         ChatSession session,
         string userMessage,
@@ -960,7 +1430,9 @@ public class ChatService
         "=== DATABASE RESULTS (SOURCE FOR HOTEL RECOMMENDATIONS) ===\n{context}\n=== END DATABASE RESULTS ===\n\nUser Query: {userQuery}\n\n" +
         "RULE 1 – Hotel recommendations (STRICT): You must NEVER recommend or mention hotels that are NOT in the DATABASE RESULTS above.\n" +
         "RULE 2 – General knowledge (ALLOWED): You MAY use general world knowledge to answer factual questions ABOUT the hotels in the results " +
-        "(e.g. distances, nearby airports, restaurants, travel time, regional geography). Mark approximations clearly.";
+        "(e.g. distances, nearby airports, restaurants, travel time, regional geography). Mark approximations clearly.\n" +
+        "RULE 3 – Conversation grounding: Respect prior user constraints from the conversation history (region, previously discussed hotel, “dort/there”). " +
+        "If the user asked about a region earlier, stay within that region unless they clearly change topic. Prefer the focused hotel when they use deixis.";
 
     private const string FallbackAnswerPrompt =
         "You are a friendly hotel search assistant for BestWellness wellness hotels.\n" +
@@ -969,6 +1441,7 @@ public class ChatService
         "STRICT rule – factual accuracy: State only facts, numbers, sizes, and offers from the database results. Do not invent, round, or merge conflicting values.\n" +
         "When the user asks about seasonal offers, list ONLY offers matching that season in the results.\n" +
         "ALLOWED – general knowledge: You MAY use general world knowledge for factual questions ABOUT hotels in the results (distances, geography). Mark approximations clearly.\n" +
+        "CONVERSATION GROUNDING: Honor prior constraints in the chat history (region, focused hotel, deixis like “dort”). Do not widen to other regions unless the user asks.\n" +
         "Be concise, helpful, and professional.";
 
     private const string FallbackNoResultsPrompt =

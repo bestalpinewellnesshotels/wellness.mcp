@@ -1,4 +1,5 @@
 using HotelChatbot.Domain.Interfaces;
+using HotelChatbot.Domain.Language;
 using HotelChatbot.Infrastructure.Classifiers.Language;
 using Microsoft.Extensions.Logging;
 
@@ -21,18 +22,39 @@ public sealed class LanguageDetectionService : ILanguageDetector
 
     public string Detect(string text, string fallback = "de")
     {
-        if (string.IsNullOrWhiteSpace(text))
-            return fallback;
-
-        var result = _classifier.Classify(text);
-        if (result.IsUnknown || string.IsNullOrWhiteSpace(result.Code))
+        var details = Classify(text);
+        if (details.IsUnknown ||
+            details.IsAmbiguous ||
+            details.IsUnrecognizedScript ||
+            string.IsNullOrWhiteSpace(details.TopCode))
         {
             _logger.LogDebug(
                 "Spracherkennung unsicher ({Reason}) → Fallback {Fallback}",
-                result.Reason ?? "unknown", fallback);
+                details.Reason ?? "unknown", fallback);
             return fallback;
         }
 
-        return result.Code;
+        return details.TopCode;
+    }
+
+    public LanguageDetectionDetails Classify(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return LanguageDetectionDetails.Empty("Leerer Text.");
+
+        var result = _classifier.Classify(text);
+        return new LanguageDetectionDetails
+        {
+            TopCode = result.Code,
+            Confidence = result.Confidence,
+            Coverage = result.Coverage,
+            IsUnknown = result.IsUnknown,
+            IsAmbiguous = result.IsAmbiguous,
+            IsUnrecognizedScript = result.IsUnrecognizedScript,
+            Reason = result.Reason,
+            Ranked = result.Top
+                .Select(item => new LanguageScore(item.Code, item.Name, item.Probability))
+                .ToList()
+        };
     }
 }

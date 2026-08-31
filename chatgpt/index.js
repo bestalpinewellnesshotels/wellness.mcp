@@ -1,4 +1,4 @@
-﻿import { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
@@ -226,6 +226,7 @@ async function executeTool(toolName, args) {
     }
     const apiResponse = await callDotNetApi("/api/chat/recommend", "POST", {
       Requirements: requirements,
+      SessionId: args.sessionId || null,
       MinConfidence: 0.45
     });
     if (_lastCall?.error === "timeout") {
@@ -236,16 +237,7 @@ async function executeTool(toolName, args) {
         hotels: []
       };
     }
-    const responseType = apiResponse?.responseType || "unknown";
-    const hotels = Array.isArray(apiResponse?.recommendations)
-      ? apiResponse.recommendations.map(mapHotelFromRecommendation)
-      : [];
-    const answer =
-      apiResponse?.finalAnswer || apiResponse?.message || FALLBACK_NO_RESULT;
-    return buildResult(answer, hotels.length ? responseType : (responseType || "no_results"), {
-      hotels,
-      sessionId: apiResponse?.sessionId || null
-    });
+    return toolResultFromRecommendApi(apiResponse);
   }
 
   if (toolName === "get_hotel_details") {
@@ -325,7 +317,11 @@ function createMcpServer() {
         wellnessFocus: z
           .string()
           .optional()
-          .describe("Wellness focus, e.g. spa, sauna, medical wellness")
+          .describe("Wellness focus, e.g. spa, sauna, medical wellness"),
+        sessionId: z
+          .string()
+          .optional()
+          .describe("Session id from a previous get_response (needed for „weitere Quellen“ / follow-ups)")
       },
       annotations: {
         readOnlyHint: true,
@@ -566,15 +562,42 @@ function writeSimSse(res, eventName, payload) {
 }
 
 function toolResultFromRecommendApi(apiResponse) {
-  const responseType = apiResponse?.responseType || "unknown";
-  const hotels = Array.isArray(apiResponse?.recommendations)
+  if (!apiResponse) {
+    return buildResult(FALLBACK_NO_RESULT, "error", { hotels: [] });
+  }
+  const responseType = apiResponse.responseType || "unknown";
+  const hotels = Array.isArray(apiResponse.recommendations)
     ? apiResponse.recommendations.map(mapHotelFromRecommendation)
     : [];
   const answer =
-    apiResponse?.finalAnswer || apiResponse?.message || FALLBACK_NO_RESULT;
-  return buildResult(answer, hotels.length ? responseType : responseType || "no_results", {
+    apiResponse.finalAnswer || apiResponse.message || FALLBACK_NO_RESULT;
+  const citedSources = Array.isArray(apiResponse.citedSources)
+    ? apiResponse.citedSources
+    : [];
+  const additionalSources = Array.isArray(apiResponse.additionalSources)
+    ? apiResponse.additionalSources
+    : [];
+  const hotelScores = Array.isArray(apiResponse.hotelScores)
+    ? apiResponse.hotelScores
+    : [];
+  const okType =
+    hotels.length > 0 ||
+    responseType === "catalog" ||
+    responseType === "more_sources" ||
+    responseType === "recommendations";
+  return buildResult(answer, okType ? responseType : responseType || "no_results", {
     hotels,
-    sessionId: apiResponse?.sessionId || null
+    sessionId: apiResponse.sessionId || null,
+    responseType,
+    vectorQuery: apiResponse.vectorQuery || null,
+    citedSources,
+    additionalSources,
+    hotelScores,
+    // ChatGPT hat keine App-Buttons für MCP-Text-Tools — Hinweis im answer + dieses Feld
+    moreSourcesHint:
+      additionalSources.length > 0
+        ? 'Reply with „weitere Quellen“ / “more sources” to see the rest.'
+        : null
   });
 }
 

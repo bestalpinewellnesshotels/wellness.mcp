@@ -154,3 +154,75 @@
 
   Ergebnis : JA  →  Anfrage wird weiterverarbeitet
 
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 17:29:43]  OUT-OF-SCOPE
+  Query    : Mich interessiert ob es Hotels gibt, bei denen man mit den Schi bis zum Hoteleingang fahren kann
+  Language : de
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : NEIN  →  Anfrage als OUT-OF-SCOPE eingestuft
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 17:44:06]  ANFRAGE OK
+  Query    : Welche Hotels kennst du in TiroL?
+  Language : de
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 18:19:47]  ANFRAGE OK
+  Query    : Welche Hotels kennst du in Tirol?
+  Language : de
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 18:20:02]  ANFRAGE OK
+  Query    : Hochschober
+  Language : de
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 18:20:46]  ANFRAGE OK
+  Query    : Wieviele Zimmer gibt es dort?
+  Language : de
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+
+══════════════════════════════════════════════════════════════════════
+[2026-08-31 18:21:17]  ANFRAGE OK
+  Query    : Zu welchen Hotels hast du Informationen ueber die Zimmeranzahl?
+  Language : de
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+

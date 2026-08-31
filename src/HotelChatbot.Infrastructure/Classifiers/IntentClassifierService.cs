@@ -18,6 +18,12 @@ public sealed class IntentClassifierService : IIntentClassifier
 
     public bool IsHotelWellnessQuery(string text)
     {
+        if (HotelDomainCues.Matches(text))
+        {
+            _logger.LogDebug("IntentClassifier: in_scope (domain cue)");
+            return true;
+        }
+
         var (label, probability) = _classifier.Classify(text);
         var ok = label.Equals("in_scope", StringComparison.OrdinalIgnoreCase)
                  && probability >= 0.42;

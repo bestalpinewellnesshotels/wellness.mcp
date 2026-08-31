@@ -9,6 +9,8 @@ public sealed class LanguageClassifier
     private const double MinMargin = 0.04;
     private const double MinWordCoverage = 0.12;
     private const double HighConfidenceWithoutWords = 0.92;
+    private const double MinSharedWordCoverage = 0.40;
+    private const int MaxSharedLetters = 96;
 
     private readonly string[] _labels;
     private readonly double[] _logPrior;
@@ -100,6 +102,14 @@ public sealed class LanguageClassifier
             return ClassificationResult.Unknown("Zu wenig Text für eine zuverlässige Erkennung.", []);
         }
 
+        if (ScriptFilter.IsUnsupportedScript(text))
+        {
+            return ClassificationResult.Unknown(
+                "Nicht unterstützte Schrift (keine trainierte Sprache).",
+                [],
+                isUnrecognizedScript: true);
+        }
+
         var features = CharNGramExtractor.Extract(text);
         if (features.Count == 0)
         {
@@ -169,7 +179,7 @@ public sealed class LanguageClassifier
             ? 0
             : (double)wordSeenCounts[top.Index] / wordTokenCount;
         var topHits = ranked
-            .Take(3)
+            .Take(8)
             .Select(item => (item.Code, LanguageCatalog.NameOf(item.Code), item.Probability))
             .ToArray();
 
@@ -189,7 +199,52 @@ public sealed class LanguageClassifier
                 topHits);
         }
 
-        if (top.Probability < MinConfidence || top.Probability - second < MinMargin)
+        if (wordTokenCount > 0 && letterCount <= MaxSharedLetters)
+        {
+            var shared = ranked
+                .Where(item => (double)wordSeenCounts[item.Index] / wordTokenCount >= MinSharedWordCoverage)
+                .Take(8)
+                .ToArray();
+            if (shared.Length >= 2)
+            {
+                var weights = shared
+                    .Select(item => (double)wordSeenCounts[item.Index] / wordTokenCount)
+                    .ToArray();
+                var weightSum = weights.Sum();
+                var flattened = shared
+                    .Select((item, index) => (
+                        item.Code,
+                        LanguageCatalog.NameOf(item.Code),
+                        weightSum <= 0 ? 0 : weights[index] / weightSum))
+                    .OrderByDescending(item => item.Item3)
+                    .ToArray();
+                return new ClassificationResult(
+                    flattened[0].Code,
+                    flattened[0].Item2,
+                    flattened[0].Item3,
+                    coverage,
+                    IsUnknown: false,
+                    Reason: "Mehrere Sprachen teilen denselben Wortschatz.",
+                    flattened,
+                    IsAmbiguous: true);
+            }
+        }
+
+        var margin = top.Probability - second;
+        if (margin < MinMargin)
+        {
+            return new ClassificationResult(
+                top.Code,
+                LanguageCatalog.NameOf(top.Code),
+                top.Probability,
+                coverage,
+                IsUnknown: false,
+                Reason: "Mehrere Sprachen liegen nah beieinander.",
+                topHits,
+                IsAmbiguous: true);
+        }
+
+        if (top.Probability < MinConfidence)
         {
             return ClassificationResult.Unknown(
                 "Die Konfidenz liegt unter dem Schwellenwert.",
@@ -262,10 +317,14 @@ public sealed record ClassificationResult(
     double Coverage,
     bool IsUnknown,
     string? Reason,
-    IReadOnlyList<(string Code, string Name, double Probability)> Top)
+    IReadOnlyList<(string Code, string Name, double Probability)> Top,
+    bool IsAmbiguous = false,
+    bool IsUnrecognizedScript = false)
 {
     public static ClassificationResult Unknown(
         string reason,
-        IReadOnlyList<(string Code, string Name, double Probability)> top) =>
-        new(null, null, top.Count > 0 ? top[0].Probability : 0, 0, true, reason, top);
+        IReadOnlyList<(string Code, string Name, double Probability)> top,
+        bool isUnrecognizedScript = false) =>
+        new(null, null, top.Count > 0 ? top[0].Probability : 0, 0, true, reason, top,
+            IsAmbiguous: false, IsUnrecognizedScript: isUnrecognizedScript);
 }

@@ -65,6 +65,26 @@ public class HotelRecommendationResponseDto
     /// Gesamtdauer der Pipeline in ms (wenn Trace aktiv).
     /// </summary>
     public long? PipelineDurationMs { get; set; }
+
+    /// <summary>Vektor-Suchquery (nach optionalem Translate).</summary>
+    public string? VectorQuery { get; set; }
+
+    /// <summary>Quellen in der Antwort (mit Score).</summary>
+    public List<SourceCitationDto> CitedSources { get; set; } = new();
+
+    /// <summary>Weitere Quellen (nicht in der Antwort; auf Anfrage / Sim-Button).</summary>
+    public List<SourceCitationDto> AdditionalSources { get; set; } = new();
+
+    /// <summary>Hotel-Treffer mit Top-Similarity (Debug / History).</summary>
+    public List<HotelScoreDto> HotelScores { get; set; } = new();
+}
+
+/// <summary>Hotel-Match mit Similarity für Trace/UI.</summary>
+public class HotelScoreDto
+{
+    public required string HotelId { get; set; }
+    public required string HotelName { get; set; }
+    public double Score { get; set; }
 }
 
 /// <summary>

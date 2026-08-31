@@ -68,7 +68,7 @@ public class OpenAIChatCompletionService : IChatCompletionService
             // Konversationshistorie hinzufügen
             foreach (var (role, content) in conversationHistory)
             {
-                messages.Add(role switch
+                messages.Add(role.ToLowerInvariant() switch
                 {
                     "user" => new UserChatMessage(content),
                     "assistant" => new AssistantChatMessage(content),
