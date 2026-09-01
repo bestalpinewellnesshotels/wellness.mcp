@@ -49,12 +49,23 @@ public static class ConversationLanguagePolicy
 
     private static readonly string[] PolyglotCodes = ["de", "en", "nl"];
 
+    /// <summary>
+    /// Wörter, die in EN/NL nicht vorkommen und die Phrase als Deutsch markieren.
+    /// Nicht in <see cref="InternationalWords"/> — sonst würde z. B. „Hotels mit Spa“ fälschlich de/en/nl fragen.
+    /// </summary>
+    private static readonly HashSet<string> GermanOnlyMarkers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "mit", "und", "bei", "für", "fur", "auch", "nicht",
+        "einen", "einem", "einer", "ich", "suche", "gibt",
+        "welche", "welches", "welcher", "ohne", "über", "ueber"
+    };
+
     private static readonly HashSet<string> InternationalWords = new(StringComparer.OrdinalIgnoreCase)
     {
         "hotel", "hotels", "hôtel", "spa", "wellness", "pool", "sauna",
         "salzburg", "tirol", "tyrol", "kärnten", "karnten", "carinthia",
         "steiermark", "vorarlberg", "wien", "vienna", "bayern", "bavaria",
-        "in", "mit", "with", "und", "and", "the", "a", "an", "bei", "near",
+        "in", "with", "and", "the", "a", "an", "near",
         "adults", "only"
     };
 
@@ -114,6 +125,12 @@ public static class ConversationLanguagePolicy
         ConversationLanguageState state,
         string text)
     {
+        if (HasGermanOnlyMarker(text))
+        {
+            Lock(state, FallbackLanguage, firstTurnUnambiguous: true);
+            return KeepGoing(FallbackLanguage, state, text, "german_marker", lockLanguage: true);
+        }
+
         if (IsSharedVocabularyPhrase(text))
             return Ask(state, text, PolyglotCandidates(detection));
 
@@ -305,10 +322,15 @@ public static class ConversationLanguagePolicy
                 PendingQuery = existing.PendingQuery
             };
 
+    internal static bool HasGermanOnlyMarker(string text) =>
+        ExtractWords(text).Any(GermanOnlyMarkers.Contains);
+
     internal static bool IsSharedVocabularyPhrase(string text)
     {
         var words = ExtractWords(text);
         if (words.Count is < 1 or > 6)
+            return false;
+        if (words.Any(GermanOnlyMarkers.Contains))
             return false;
         if (!words.Any(w =>
                 w.StartsWith("hotel", StringComparison.OrdinalIgnoreCase) ||

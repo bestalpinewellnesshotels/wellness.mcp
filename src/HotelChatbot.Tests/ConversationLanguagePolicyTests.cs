@@ -40,7 +40,7 @@ public class ConversationLanguagePolicyTests
         Assert.Equal("de", decision.Language);
         Assert.Equal("de", decision.State.LockedLanguage);
         Assert.True(decision.State.FirstTurnUnambiguous);
-        Assert.Equal("detected", decision.Source);
+        Assert.Contains(decision.Source, (string[])["detected", "german_marker"]);
     }
 
     [Fact]
@@ -160,6 +160,40 @@ public class ConversationLanguagePolicyTests
         var decision = ConversationLanguagePolicy.Resolve(detection, null, "Hotels in Salzburg");
         Assert.True(decision.NeedsClarification);
         Assert.Equal(["de", "en", "nl"], decision.State.PendingCodes);
+    }
+
+    [Fact]
+    public void GermanMarker_MitAlone_LocksGerman_NoClarification()
+    {
+        var detection = Ranked(("fi", 0.274), ("mt", 0.228), ("se", 0.159), ("de", 0.096));
+        detection = new LanguageDetectionDetails
+        {
+            TopCode = null,
+            Confidence = 0.274,
+            Ranked = detection.Ranked,
+            IsUnknown = true,
+            IsAmbiguous = false,
+            Reason = "Der Text passt zu keiner trainierten europäischen Sprache."
+        };
+
+        var decision = ConversationLanguagePolicy.Resolve(detection, null, "mit");
+
+        Assert.False(decision.NeedsClarification);
+        Assert.Equal("de", decision.Language);
+        Assert.Equal("de", decision.State.LockedLanguage);
+        Assert.Equal("german_marker", decision.Source);
+    }
+
+    [Fact]
+    public void GermanMarker_HotelsMitSpa_LocksGerman_NotPolyglotAsk()
+    {
+        var detection = Ranked(("ca", 1.0), ("de", 0.0), ("en", 0.0));
+        var decision = ConversationLanguagePolicy.Resolve(detection, null, "Hotels mit Spa");
+
+        Assert.False(decision.NeedsClarification);
+        Assert.Equal("de", decision.Language);
+        Assert.Equal("de", decision.State.LockedLanguage);
+        Assert.Equal("german_marker", decision.Source);
     }
 
     [Fact]
