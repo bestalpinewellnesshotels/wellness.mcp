@@ -43,9 +43,6 @@ jobs:
           [System.IO.File]::WriteAllText($keyPath, $key)
           icacls $keyPath /inheritance:r /grant:r "$env:USERNAME`:F" | Out-Null
 
-          ssh-keyscan -H $env:DEPLOY_SSH_HOST 2>$null |
-            Out-File -FilePath (Join-Path $sshDir "known_hosts") -Encoding ascii -Append
-
       - name: Write production settings
         shell: pwsh
         env:
