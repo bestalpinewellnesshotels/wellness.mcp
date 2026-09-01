@@ -28,6 +28,7 @@ public sealed class ConversationLanguageDecision
 /// <summary>
 /// Gesprächsregeln für die lokale Spracherkennung.
 /// Der Klassifizierer läuft nach jeder Eingabe; die Session hält die erste eindeutige Sprache.
+/// ChatGPT hat keine zuverlässige Sprachauswahl-UI — bei Mehrdeutigkeit wird nicht nachgefragt.
 /// </summary>
 public static class ConversationLanguagePolicy
 {
@@ -47,15 +48,19 @@ public static class ConversationLanguagePolicy
         "ski", "piste", "urlaub", "vacation", "holiday", "resort"
     ];
 
-    private static readonly string[] PolyglotCodes = ["de", "en", "nl"];
+    /// <summary>Sprachen, denen der n-Gramm-Classifier auf Hotelphrasen vertrauen darf.</summary>
+    private static readonly HashSet<string> CoreLanguages = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "de", "en", "nl", "it", "fr"
+    };
 
     /// <summary>
     /// Wörter, die in EN/NL nicht vorkommen und die Phrase als Deutsch markieren.
-    /// Nicht in <see cref="InternationalWords"/> — sonst würde z. B. „Hotels mit Spa“ fälschlich de/en/nl fragen.
+    /// Nicht in <see cref="InternationalWords"/> — sonst würde z. B. „Hotels mit Spa“ als Polyglot gelten.
     /// </summary>
     private static readonly HashSet<string> GermanOnlyMarkers = new(StringComparer.OrdinalIgnoreCase)
     {
-        "mit", "und", "bei", "für", "fur", "auch", "nicht",
+        "mit", "und", "bei", "für", "fur", "auch", "nicht", "im",
         "einen", "einem", "einer", "ich", "suche", "gibt",
         "welche", "welches", "welcher", "ohne", "über", "ueber"
     };
@@ -66,7 +71,7 @@ public static class ConversationLanguagePolicy
         "salzburg", "tirol", "tyrol", "kärnten", "karnten", "carinthia",
         "steiermark", "vorarlberg", "wien", "vienna", "bayern", "bavaria",
         "in", "with", "and", "the", "a", "an", "near",
-        "adults", "only"
+        "adults", "only", "dogs", "family"
     };
 
     public static ConversationLanguageState? Deserialize(string? json)
@@ -88,13 +93,15 @@ public static class ConversationLanguagePolicy
     public static ConversationLanguageDecision Resolve(
         LanguageDetectionDetails detection,
         ConversationLanguageState? existing,
-        string userText)
+        string userText,
+        string? languageHint = null)
     {
         var state = Clone(existing);
         var text = userText ?? string.Empty;
+        var hint = NormalizeHint(languageHint);
 
         if (state.PendingCodes is { Count: > 0 })
-            return ResolvePending(detection, state, text);
+            return ResolvePending(detection, state, text, hint);
 
         if (detection.IsUnrecognizedScript)
             return KeepGoing(UnrecognizedLanguage, state, text, "unrecognized_en", lockLanguage: false);
@@ -102,7 +109,7 @@ public static class ConversationLanguagePolicy
         if (HasLock(state))
             return ResolveFollowUp(detection, state, text);
 
-        return ResolveFirstTurn(detection, state, text);
+        return ResolveFirstTurn(detection, state, text, hint);
     }
 
     public static IReadOnlyList<LanguageScore> CloseLanguages(IReadOnlyList<LanguageScore> ranked)
@@ -123,7 +130,8 @@ public static class ConversationLanguagePolicy
     private static ConversationLanguageDecision ResolveFirstTurn(
         LanguageDetectionDetails detection,
         ConversationLanguageState state,
-        string text)
+        string text,
+        string? hint)
     {
         if (HasGermanOnlyMarker(text))
         {
@@ -131,23 +139,46 @@ public static class ConversationLanguagePolicy
             return KeepGoing(FallbackLanguage, state, text, "german_marker", lockLanguage: true);
         }
 
+        var named = LanguageClarification.TryMatchAnyChoice(text);
+        if (named != null && !LooksLikeHotelQuery(text))
+        {
+            Lock(state, named, firstTurnUnambiguous: true);
+            return KeepGoing(named, state, text, "choice", lockLanguage: true);
+        }
+
         if (IsSharedVocabularyPhrase(text))
-            return Ask(state, text, PolyglotCandidates(detection));
+            return PickPreferred(state, text, hint, "shared_vocab");
 
         var close = CloseLanguages(detection.Ranked);
-        if (close.Count >= 2)
-            return Ask(state, text, close);
+        var coreClose = close.Where(score => IsCore(score.Code)).ToList();
+        var topIsCore = detection.TopCode != null && IsCore(detection.TopCode);
+
+        if (LooksLikeHotelQuery(text) && !topIsCore)
+            return PickPreferred(state, text, hint, "hotel_fallback");
+
+        if (coreClose.Count >= 2)
+            return PickPreferred(state, text, hint, "ambiguous_core");
+
+        if (close.Count >= 2 && !topIsCore)
+            return PickPreferred(state, text, hint, "ambiguous_fallback");
 
         if (!detection.IsUnknown &&
             !detection.IsAmbiguous &&
-            !string.IsNullOrWhiteSpace(detection.TopCode))
+            topIsCore)
         {
-            state.LockedLanguage = detection.TopCode;
-            state.FirstTurnUnambiguous = true;
+            Lock(state, detection.TopCode!, firstTurnUnambiguous: true);
+            return KeepGoing(detection.TopCode!, state, text, "detected", lockLanguage: true);
+        }
+
+        if (!detection.IsUnknown &&
+            !string.IsNullOrWhiteSpace(detection.TopCode) &&
+            topIsCore)
+        {
+            Lock(state, detection.TopCode, firstTurnUnambiguous: true);
             return KeepGoing(detection.TopCode, state, text, "detected", lockLanguage: true);
         }
 
-        return KeepGoing(FallbackLanguage, state, text, "fallback_de", lockLanguage: false);
+        return PickPreferred(state, text, hint, "fallback_de");
     }
 
     private static ConversationLanguageDecision ResolveFollowUp(
@@ -167,6 +198,9 @@ public static class ConversationLanguagePolicy
             !string.IsNullOrWhiteSpace(detection.TopCode) &&
             !detection.TopCode.Equals(locked, StringComparison.OrdinalIgnoreCase))
         {
+            if (!IsCore(detection.TopCode) && LooksLikeHotelQuery(text))
+                return KeepGoing(locked, state, text, "sticky", lockLanguage: true);
+
             state.LockedLanguage = detection.TopCode;
             state.FirstTurnUnambiguous = true;
             return KeepGoing(detection.TopCode, state, text, "switched", lockLanguage: true);
@@ -181,9 +215,9 @@ public static class ConversationLanguagePolicy
     private static ConversationLanguageDecision ResolvePending(
         LanguageDetectionDetails detection,
         ConversationLanguageState state,
-        string text)
+        string text,
+        string? hint)
     {
-        var pending = state.PendingCodes!;
         var pendingQuery = state.PendingQuery;
 
         if (detection.IsUnrecognizedScript)
@@ -192,7 +226,7 @@ public static class ConversationLanguagePolicy
             return KeepGoing(UnrecognizedLanguage, state, pendingQuery ?? text, "unrecognized_en", lockLanguage: false);
         }
 
-        var named = LanguageClarification.TryMatchChoice(text, pending);
+        var named = LanguageClarification.TryMatchAnyChoice(text);
         if (named != null)
         {
             var query = LooksLikeHotelQuery(text) ? text : (pendingQuery ?? text);
@@ -200,66 +234,32 @@ public static class ConversationLanguagePolicy
             return KeepGoing(named, state, query, "choice", lockLanguage: true);
         }
 
-        var close = CloseLanguages(detection.Ranked)
-            .Where(score => pending.Contains(score.Code, StringComparer.OrdinalIgnoreCase))
-            .ToList();
-
-        if (!detection.IsUnknown &&
-            !detection.IsAmbiguous &&
-            detection.TopCode != null &&
-            pending.Contains(detection.TopCode, StringComparer.OrdinalIgnoreCase))
+        if (LanguageClarification.IsAffirmative(text) || !LooksLikeHotelQuery(text))
         {
-            Lock(state, detection.TopCode, firstTurnUnambiguous: false);
-            return KeepGoing(detection.TopCode, state, text, "detected", lockLanguage: true);
+            var language = hint ?? FallbackLanguage;
+            Lock(state, language, firstTurnUnambiguous: false);
+            return KeepGoing(language, state, pendingQuery ?? text, "choice_default", lockLanguage: true);
         }
 
-        if (close.Count == 1)
-        {
-            Lock(state, close[0].Code, firstTurnUnambiguous: false);
-            return KeepGoing(close[0].Code, state, text, "detected", lockLanguage: true);
-        }
-
-        if (close.Count >= 2)
-        {
-            state.PendingCodes = close.Select(score => score.Code).ToList();
-            return Ask(state, pendingQuery ?? text, close);
-        }
-
-        var remaining = detection.Ranked
-            .Where(s => pending.Contains(s.Code, StringComparer.OrdinalIgnoreCase))
-            .Take(MaxClarificationLanguages)
-            .ToList();
-        if (remaining.Count == 0)
-        {
-            remaining = detection.Ranked
-                .Take(Math.Min(Math.Max(pending.Count, 1), MaxClarificationLanguages))
-                .ToList();
-        }
-
-        return Ask(state, pendingQuery ?? text, remaining);
+        ClearPending(state);
+        return ResolveFirstTurn(detection, state, text, hint);
     }
 
-    private static ConversationLanguageDecision Ask(
+    /// <summary>
+    /// Mehrdeutige Hotel-/Kurzphrasen: Client-Hinweis (ChatGPT-Gesprächssprache) oder Deutsch.
+    /// Softmax (oft nl/ca/rm) wird hier nicht verwendet.
+    /// </summary>
+    private static ConversationLanguageDecision PickPreferred(
         ConversationLanguageState state,
-        string pendingQuery,
-        IReadOnlyList<LanguageScore> close)
+        string text,
+        string? hint,
+        string source)
     {
-        if (close.Count == 0)
-            return KeepGoing(FallbackLanguage, state, pendingQuery, "fallback_de", lockLanguage: false);
-
-        state.PendingCodes = close.Select(score => score.Code).ToList();
-        state.PendingQuery = pendingQuery;
-        state.LockedLanguage = null;
-        state.FirstTurnUnambiguous = false;
-        return new ConversationLanguageDecision
-        {
-            Language = close[0].Code,
-            NeedsClarification = true,
-            ClarificationMessage = LanguageClarification.Build(close),
-            State = state,
-            Source = "clarify",
-            TextToProcess = pendingQuery
-        };
+        var language = hint ?? FallbackLanguage;
+        var lockIt = hint != null;
+        if (lockIt)
+            Lock(state, language, firstTurnUnambiguous: false);
+        return KeepGoing(language, state, text, source, lockLanguage: lockIt);
     }
 
     private static ConversationLanguageDecision KeepGoing(
@@ -328,14 +328,15 @@ public static class ConversationLanguagePolicy
     internal static bool IsSharedVocabularyPhrase(string text)
     {
         var words = ExtractWords(text);
-        if (words.Count is < 1 or > 6)
+        if (words.Count is < 1 or > 8)
             return false;
         if (words.Any(GermanOnlyMarkers.Contains))
             return false;
         if (!words.Any(w =>
                 w.StartsWith("hotel", StringComparison.OrdinalIgnoreCase) ||
                 w.Equals("spa", StringComparison.OrdinalIgnoreCase) ||
-                w.Equals("wellness", StringComparison.OrdinalIgnoreCase)))
+                w.Equals("wellness", StringComparison.OrdinalIgnoreCase) ||
+                w.Equals("sauna", StringComparison.OrdinalIgnoreCase)))
             return false;
         return words.All(w => InternationalWords.Contains(w));
     }
@@ -366,27 +367,24 @@ public static class ConversationLanguagePolicy
         return words;
     }
 
-    private static IReadOnlyList<LanguageScore> PolyglotCandidates(LanguageDetectionDetails detection)
-    {
-        var byCode = detection.Ranked.ToDictionary(
-            score => score.Code, StringComparer.OrdinalIgnoreCase);
-        var list = new List<LanguageScore>();
-        foreach (var code in PolyglotCodes)
-        {
-            if (byCode.TryGetValue(code, out var score))
-                list.Add(score);
-            else
-                list.Add(new LanguageScore(code, code, 1.0 / PolyglotCodes.Length));
-        }
-
-        return list;
-    }
-
     private static bool LooksLikeHotelQuery(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
             return false;
         var lower = text.ToLowerInvariant();
         return HotelCues.Any(cue => lower.Contains(cue, StringComparison.Ordinal));
+    }
+
+    private static bool IsCore(string code) =>
+        CoreLanguages.Contains(code);
+
+    internal static string? NormalizeHint(string? hint)
+    {
+        if (string.IsNullOrWhiteSpace(hint))
+            return null;
+        var code = hint.Trim().ToLowerInvariant();
+        if (code.Length >= 2)
+            code = code[..2];
+        return LanguageClarification.AllCodes.Contains(code) ? code : null;
     }
 }

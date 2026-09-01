@@ -21,24 +21,16 @@ Ohne `sessionId` gilt jede Nachricht als erster Satz (inkl. möglicher Nachfrage
 
 ### 2.1 Erster Satz – Gewichte nah beieinander
 
-Sätze wie `Hotels in Salzburg` sind in mehreren Sprachen gültig (Deutsch, Englisch, Niederländisch/Flämisch). Der n-Gramm-Klassifizierer kann solche Kurzphasen trotzdem einer Sprache zuordnen (oft Niederländisch mit sehr hoher Softmax-Wahrscheinlichkeit).
+Sätze wie `Hotels in Salzburg` sind in mehreren Sprachen gültig (Deutsch, Englisch, Niederländisch/Flämisch). Der n-Gramm-Klassifizierer kann solche Kurzphasen trotzdem einer Sprache zuordnen (oft Niederländisch, Katalanisch oder Rätoromanisch mit hoher Softmax-Wahrscheinlichkeit).
 
-Deshalb gelten zwei Erkennungswege:
+**Es wird nicht nachgefragt.** ChatGPT hat keine zuverlässige Sprachauswahl-UI (kein Elicitation-Picker); eine Tool-Antwort `language_clarify` würde die Suche stoppen und in einer Schleife hängen. Deshalb:
 
-1. **Klassifizierer:** zwei oder mehr Sprachen mit ähnlicher Wahrscheinlichkeit  
-2. **Geteilter Wortschatz:** kurze Hotel-/Ortsphrasen aus international gleichen Wörtern (`hotel(s)`, `spa`, `wellness`, `Salzburg`, `Tirol`, …)
+1. Deutsche Marker (`mit`, `und`, `ich`, `suche`, …) → Deutsch, sperren
+2. Geteilter Hotel-Wortschatz oder uneindeutige Kernsprachen → Client-Hint (`language`, z. B. ChatGPT-Gesprächssprache) oder **Deutsch**
+3. Exotische Top-Sprache (`rm`, `ca`, …) bei Hotelphrasen → wie 2., niemals Rumantsch/Katalanisch
+4. Eindeutige Kernsprache (`de`/`en`/`nl`/`it`/`fr`) → diese Sprache, sperren
 
-In beiden Fällen fragt das System nach – **jeweils in genau diesen Sprachen**, zum Beispiel:
-
-```
-Möchten Sie auf Deutsch fortfahren?
-Would you like to continue in English?
-Wilt u in het Nederlands verdergaan?
-```
-
-Die ursprüngliche Anfrage bleibt in der Session liegen. Antwortet der User mit `Deutsch`, `English`, `Nederlands`, `de` usw., wird diese Sprache festgelegt und die **ursprüngliche Suche** ausgeführt.
-
-Antwortet der User stattdessen mit einer klaren Hotelanfrage in einer der Kandidaten-Sprachen, gilt diese neue Anfrage.
+Eine offene alte Nachfrage (`PendingCodes`) wird mit `Deutsch`/`English`/… (auch wenn nicht in der Pending-Liste) oder mit `Ja`/`Yes` aufgelöst; sonst läuft die ursprüngliche Suche auf Deutsch weiter.
 
 ### 2.2 Erster Satz eindeutig – Folgesätze kleben an dieser Sprache
 
@@ -102,8 +94,8 @@ Klassifizierer-intern: `MinConfidence = 0,36`, `MinMargin = 0,04` – darunter `
 
 | Turn | User | Verhalten |
 |------|------|-----------|
-| 1 | `Hotels in Salzburg` | Nachfrage auf de/en/nl (wenn Scores nah) |
-| 2 | `Deutsch` | Sprache de, Suche „Hotels in Salzburg“ |
+| 1 | `Hotels in Salzburg` | Deutsch (kein Ask), Hint `en` → Englisch |
+| 2 | `Deutsch` | nur relevant bei alter Pending-Session |
 | 1 | `Ich suche ein Wellnesshotel mit Sauna in Tirol.` | de, eindeutig, sperren |
 | 2 | `Hotels in Salzburg` | bleibt de (sticky), obwohl nl/en höher liegen können |
 | 1 | `京都のホテルを探しています` | Antwort auf Englisch |

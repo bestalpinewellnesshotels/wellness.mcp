@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      with_configuration:
+        description: "Server-Konfiguration überschreiben (appsettings, systemd, .env)"
+        type: boolean
+        default: false
 
 jobs:
   deploy:
@@ -44,6 +49,7 @@ jobs:
           icacls $keyPath /inheritance:r /grant:r "$env:USERNAME`:F" | Out-Null
 
       - name: Write production settings
+        if: github.event_name == 'workflow_dispatch' && inputs.with_configuration
         shell: pwsh
         env:
           DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
@@ -121,4 +127,16 @@ jobs:
 
       - name: Deploy to production
         shell: pwsh
-        run: .\DEPLOY-PRODUCTION.ps1 -NonInteractive
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_PUBLIC_URL: ${{ secrets.DEPLOY_PUBLIC_URL }}
+        run: |
+          $deployArgs = @("-NonInteractive")
+          if ($env:GITHUB_EVENT_NAME -eq "workflow_dispatch" -and "${{ inputs.with_configuration }}" -eq "true") {
+            $deployArgs += "-WithConfiguration"
+            Write-Host "Deploy MIT Ueberschreiben der Server-Konfiguration."
+          } else {
+            Write-Host "Deploy ohne Konfigurations-Ueberschreiben."
+          }
+          & .\DEPLOY-PRODUCTION.ps1 @deployArgs

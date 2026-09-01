@@ -7,7 +7,7 @@ namespace HotelChatbot.Tests;
 public class ConversationLanguagePolicyTests
 {
     [Fact]
-    public void FirstTurn_CloseScores_AsksInThoseLanguages()
+    public void FirstTurn_SharedPhrase_PicksGermanWithoutAsking()
     {
         var detection = Ranked(
             ("de", 0.34),
@@ -18,14 +18,11 @@ public class ConversationLanguagePolicyTests
 
         var decision = ConversationLanguagePolicy.Resolve(detection, null, "Hotels in Salzburg");
 
-        Assert.True(decision.NeedsClarification);
-        Assert.Equal("clarify", decision.Source);
-        Assert.Contains("Deutsch", decision.ClarificationMessage);
-        Assert.Contains("English", decision.ClarificationMessage);
-        Assert.Contains("Nederlands", decision.ClarificationMessage);
-        Assert.DoesNotContain("français", decision.ClarificationMessage, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(["de", "en", "nl"], decision.State.PendingCodes);
-        Assert.Equal("Hotels in Salzburg", decision.State.PendingQuery);
+        Assert.False(decision.NeedsClarification);
+        Assert.Equal("de", decision.Language);
+        Assert.Equal("shared_vocab", decision.Source);
+        Assert.Null(decision.State.PendingCodes);
+        Assert.Null(decision.State.LockedLanguage);
     }
 
     [Fact]
@@ -154,12 +151,14 @@ public class ConversationLanguagePolicyTests
     }
 
     [Fact]
-    public void SharedPhrase_PeakedDutchSoftmax_StillAsksDeEnNl()
+    public void SharedPhrase_PeakedDutchSoftmax_PicksGermanNotDutch()
     {
         var detection = Ranked(("nl", 0.97), ("de", 0.03), ("rm", 0.00));
         var decision = ConversationLanguagePolicy.Resolve(detection, null, "Hotels in Salzburg");
-        Assert.True(decision.NeedsClarification);
-        Assert.Equal(["de", "en", "nl"], decision.State.PendingCodes);
+        Assert.False(decision.NeedsClarification);
+        Assert.Equal("de", decision.Language);
+        Assert.NotEqual("nl", decision.Language);
+        Assert.Null(decision.State.PendingCodes);
     }
 
     [Fact]
@@ -197,15 +196,105 @@ public class ConversationLanguagePolicyTests
     }
 
     [Fact]
-    public void SharedPhrase_HotelsInSalzburg_AsksClarification()
+    public void SharedPhrase_HotelsInSalzburg_PicksGermanWithoutAsking()
     {
         var clf = LanguageClassifier.Train(CorpusLoader.LoadTraining());
         var details = ToDetails(clf.Classify("Hotels in Salzburg"));
         var decision = ConversationLanguagePolicy.Resolve(details, null, "Hotels in Salzburg");
-        Assert.True(decision.NeedsClarification, RankedPreview(details));
-        Assert.Contains("Deutsch", decision.ClarificationMessage);
-        Assert.Contains("English", decision.ClarificationMessage);
-        Assert.Contains("Nederlands", decision.ClarificationMessage);
+        Assert.False(decision.NeedsClarification, RankedPreview(details));
+        Assert.Equal("de", decision.Language);
+        Assert.Null(decision.ClarificationMessage);
+    }
+
+    [Fact]
+    public void SharedPhrase_EnglishHint_UsesHint()
+    {
+        var detection = Ranked(("nl", 0.97), ("de", 0.03));
+        var decision = ConversationLanguagePolicy.Resolve(
+            detection, null, "Hotels in Salzburg", "en");
+        Assert.False(decision.NeedsClarification);
+        Assert.Equal("en", decision.Language);
+        Assert.Equal("en", decision.State.LockedLanguage);
+        Assert.Equal("shared_vocab", decision.Source);
+    }
+
+    [Fact]
+    public void ExoticRmCa_HotelQuery_PicksGermanWithoutAsking()
+    {
+        var detection = Ranked(("rm", 0.42), ("ca", 0.31), ("de", 0.08));
+        var decision = ConversationLanguagePolicy.Resolve(
+            detection, null, "Hotels in Tirol sauna");
+        Assert.False(decision.NeedsClarification);
+        Assert.Equal("de", decision.Language);
+        Assert.DoesNotContain(decision.Language, (string[])["rm", "ca"]);
+        Assert.Null(decision.State.PendingCodes);
+    }
+
+    [Fact]
+    public void PendingClarification_Ja_UsesPendingQueryInGerman()
+    {
+        var pending = new ConversationLanguageState
+        {
+            PendingCodes = ["rm", "ca"],
+            PendingQuery = "Hotels in Tirol mit Sauna"
+        };
+
+        var decision = ConversationLanguagePolicy.Resolve(
+            LanguageDetectionDetails.Empty("n/a"), pending, "Ja");
+
+        Assert.False(decision.NeedsClarification);
+        Assert.Equal("de", decision.Language);
+        Assert.Equal("Hotels in Tirol mit Sauna", decision.TextToProcess);
+        Assert.Null(decision.State.PendingCodes);
+    }
+
+    [Fact]
+    public void PendingClarification_Deutsch_OutsidePending_StillLocksGerman()
+    {
+        var pending = new ConversationLanguageState
+        {
+            PendingCodes = ["rm", "ca"],
+            PendingQuery = "Hotels in Tirol mit Sauna"
+        };
+
+        var decision = ConversationLanguagePolicy.Resolve(
+            LanguageDetectionDetails.Empty("n/a"), pending, "Deutsch");
+
+        Assert.False(decision.NeedsClarification);
+        Assert.Equal("de", decision.Language);
+        Assert.Equal("Hotels in Tirol mit Sauna", decision.TextToProcess);
+        Assert.Equal("choice", decision.Source);
+    }
+
+    [Fact]
+    public void PendingClarification_RetrySameHotelQuery_SearchesInsteadOfLoop()
+    {
+        var pending = new ConversationLanguageState
+        {
+            PendingCodes = ["rm", "ca"],
+            PendingQuery = "Hotels in Tirol mit Sauna"
+        };
+        var detection = Ranked(("rm", 0.42), ("ca", 0.31));
+
+        var decision = ConversationLanguagePolicy.Resolve(
+            detection, pending, "Hotels in Tirol mit Sauna");
+
+        Assert.False(decision.NeedsClarification);
+        Assert.Equal("de", decision.Language);
+        Assert.Null(decision.State.PendingCodes);
+    }
+
+    [Fact]
+    public void McpComposed_HotelsInTirolMitSauna_LocksGerman()
+    {
+        var detection = Ranked(("rm", 0.5), ("ca", 0.4), ("de", 0.02));
+        var decision = ConversationLanguagePolicy.Resolve(
+            detection, null, "Hotels in Tirol mit Sauna Tirol sauna");
+
+        Assert.False(decision.NeedsClarification);
+        Assert.Equal("de", decision.Language);
+        Assert.Equal("german_marker", decision.Source);
+        Assert.Equal("de", decision.State.LockedLanguage);
     }
 
     [Fact]

@@ -99,7 +99,8 @@ public class ChatService
                 session,
                 logIntent: true,
                 ct,
-                trace);
+                trace,
+                request.Language);
 
             if (gates.RejectReason == "language_clarify")
             {
@@ -558,18 +559,20 @@ public class ChatService
 
     /// <summary>
     /// Gemeinsame Language-/Ethical-/Intent-Gates für Recommend und Hotel-Details.
-    /// Sprache wird nach jeder User-Eingabe klassifiziert (kein Client-Override).
+    /// Sprache wird nach jeder User-Eingabe klassifiziert.
+    /// <paramref name="languageHint"/> gilt nur bei Mehrdeutigkeit (kein harter Override).
     /// </summary>
     private async Task<SafetyGateResult> RunSafetyGatesAsync(
         string text,
         ChatSession session,
         bool logIntent,
         CancellationToken ct,
-        PipelineTraceCollector? trace = null)
+        PipelineTraceCollector? trace = null,
+        string? languageHint = null)
     {
         var existingLanguage = LoadConversationLanguage(session);
         var details = _languageDetector.Classify(text);
-        var decision = ConversationLanguagePolicy.Resolve(details, existingLanguage, text);
+        var decision = ConversationLanguagePolicy.Resolve(details, existingLanguage, text, languageHint);
         await SaveConversationLanguageAsync(session, decision.State, ct);
 
         var language = NormalizeLanguageCode(decision.Language);
@@ -764,7 +767,8 @@ public class ChatService
                 session,
                 logIntent: false,
                 ct,
-                trace);
+                trace,
+                request.Language);
 
             if (gates.RejectReason == "language_clarify")
             {

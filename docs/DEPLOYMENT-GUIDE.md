@@ -393,7 +393,7 @@ curl https://chatgpt.your-domain.com/
 
 **Erwartete Antwort:**
 ```
-HotelChatbot MCP Server V1.0.3 ready
+HotelChatbot MCP Server V1.0.4 ready
 ```
 
 ### Test 3: SSE Endpoint

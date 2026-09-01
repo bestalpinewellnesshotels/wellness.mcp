@@ -112,6 +112,14 @@ internal static class LanguageClarification
         ("ქართული", "ka"), ("georgian", "ka"), ("georgisch", "ka")
     ];
 
+    internal static readonly HashSet<string> AllCodes = new(Prompts.Keys, StringComparer.OrdinalIgnoreCase);
+
+    private static readonly HashSet<string> Affirmatives = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ja", "yes", "oui", "sí", "si", "ok", "okay", "gerne", "sure",
+        "jo", "yep", "yeah", "ja bitte", "yes please", "bitte"
+    };
+
     public static string Build(IReadOnlyList<LanguageScore> candidates) =>
         string.Join("\n", candidates.Select(PromptFor));
 
@@ -119,6 +127,16 @@ internal static class LanguageClarification
         Prompts.TryGetValue(candidate.Code, out var prompt)
             ? prompt
             : $"Would you like to continue in {candidate.Name}?";
+
+    public static string? TryMatchAnyChoice(string text) =>
+        TryMatchChoice(text, AllCodes);
+
+    public static bool IsAffirmative(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+        return Affirmatives.Contains(Normalize(text));
+    }
 
     /// <summary>
     /// Erkennt eine explizite Sprachwahl (Name oder ISO-Code) in den erlaubten Kandidaten.

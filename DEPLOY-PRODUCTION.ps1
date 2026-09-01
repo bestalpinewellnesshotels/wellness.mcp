@@ -1,14 +1,21 @@
 #!/usr/bin/env powershell
 <#
 .SYNOPSIS
-    Ein Script fuer Build + Deploy auf den Best-Alpine-Produktivserver.
+    Baut den aktuellen Stand und kopiert ihn auf den Best-Alpine-Produktivserver.
 
 .DESCRIPTION
-    Beim ersten Start werden fehlende Zugangsdaten abgefragt und lokal gespeichert.
-    Danach genuegt meist:  .\DEPLOY-PRODUCTION.ps1
+    Standard: nur Code/Binaries hochladen. appsettings, systemd und .env auf dem
+    Server bleiben unveraendert.
+
+    Konfiguration wird NUR geschrieben, wenn -WithConfiguration gesetzt ist.
+
+.PARAMETER WithConfiguration
+    appsettings.Production.json, systemd-Units und optional chatgpt/.env
+    auf dem Server ueberschreiben. Dafuer werden Zugangsdaten lokal abgefragt
+    bzw. aus deploy/production.settings.json gelesen.
 
 .PARAMETER Reconfigure
-    Konfiguration erneut abfragen.
+    Wie -WithConfiguration, fragt die Zugangsdaten immer neu ab.
 
 .PARAMETER BuildOnly
     Nur lokal bauen, nichts hochladen.
@@ -17,7 +24,7 @@
     Vorhandenen Build aus publish/linux-x64 deployen.
 
 .PARAMETER NonInteractive
-    Kein Menue, direkt deployen (fuer CI/CD).
+    Keine Rueckfragen (fuer CI/CD).
 
 .PARAMETER MigrateDatabase
     Nach dem Deploy Datenbank von dev-universe.net importieren.
@@ -26,11 +33,15 @@
     .\DEPLOY-PRODUCTION.ps1
 
 .EXAMPLE
-    .\DEPLOY-PRODUCTION.ps1 -NonInteractive -MigrateDatabase
+    .\DEPLOY-PRODUCTION.ps1 -WithConfiguration
+
+.EXAMPLE
+    .\DEPLOY-PRODUCTION.ps1 -NonInteractive
 #>
 
 [CmdletBinding()]
 param(
+    [switch]$WithConfiguration,
     [switch]$Reconfigure,
     [switch]$BuildOnly,
     [switch]$SkipBuild,
@@ -43,8 +54,13 @@ $root = $PSScriptRoot
 $configPath = Join-Path $root "deploy\production.settings.json"
 $buildOutput = Join-Path $root "publish\linux-x64"
 $stagingDir = Join-Path $root "publish\deploy-staging"
+$apiStaging = Join-Path $stagingDir "api"
 $mcpStaging = Join-Path $stagingDir "mcp"
 $templatePath = Join-Path $root "deploy\appsettings.Production.template.json"
+
+if ($Reconfigure) {
+    $WithConfiguration = $true
+}
 
 function Write-Header($text) {
     Write-Host ""
@@ -68,7 +84,7 @@ function Get-DefaultConfig {
         $dev = Get-Content $devSettingsPath -Raw | ConvertFrom-Json
     }
 
-    return [ordered]@{
+    $cfg = [ordered]@{
         SshHost                   = "mcp.bestalpine2.ms.mynet.at"
         SshUser                   = "mcp"
         PublicUrl                 = "https://mcp.bestalpine2.ms.mynet.at"
@@ -94,15 +110,27 @@ function Get-DefaultConfig {
         ApiPort                   = 8080
         McpPort                   = 3001
     }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_HOST))   { $cfg.SshHost   = $env:DEPLOY_SSH_HOST }
+    if (-not [string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_USER))   { $cfg.SshUser   = $env:DEPLOY_SSH_USER }
+    if (-not [string]::IsNullOrWhiteSpace($env:DEPLOY_PUBLIC_URL)) { $cfg.PublicUrl = $env:DEPLOY_PUBLIC_URL.TrimEnd('/') }
+
+    return $cfg
 }
 
 function Load-DeployConfig {
-    if (-not (Test-Path $configPath)) { return $null }
-    $json = Get-Content $configPath -Raw | ConvertFrom-Json
     $cfg = Get-DefaultConfig
+    if (-not (Test-Path $configPath)) { return $cfg }
+
+    $json = Get-Content $configPath -Raw | ConvertFrom-Json
     foreach ($prop in $json.PSObject.Properties) {
         $cfg[$prop.Name] = $prop.Value
     }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_HOST))   { $cfg.SshHost   = $env:DEPLOY_SSH_HOST }
+    if (-not [string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_USER))   { $cfg.SshUser   = $env:DEPLOY_SSH_USER }
+    if (-not [string]::IsNullOrWhiteSpace($env:DEPLOY_PUBLIC_URL)) { $cfg.PublicUrl = $env:DEPLOY_PUBLIC_URL.TrimEnd('/') }
+
     return $cfg
 }
 
@@ -177,11 +205,11 @@ function Initialize-DeployConfig {
         return $cfg
     }
 
-    Write-Header "Konfiguration"
+    Write-Header "Konfiguration (-WithConfiguration)"
     if ($Force) {
         Write-Host "  Alle Werte koennen neu eingegeben werden (Enter = aktueller Wert)." -ForegroundColor Gray
     } else {
-        Write-Host "  Beim ersten Deploy fehlen noch einige Werte." -ForegroundColor Gray
+        Write-Host "  Fuer das Ueberschreiben der Server-Config fehlen noch Werte." -ForegroundColor Gray
     }
     Write-Host ""
 
@@ -384,9 +412,6 @@ function Invoke-ScpRecursive {
 function Test-SshAccess {
     param([string]$Target)
 
-    # Native ssh-Fehler duerfen hier nicht terminieren (ErrorActionPreference=Stop /
-    # PSNativeCommandUseErrorActionPreference), sonst erscheint nur "Permission denied"
-    # statt der Hilfe zum Key-Setup.
     $prevNative = $PSNativeCommandUseErrorActionPreference
     $PSNativeCommandUseErrorActionPreference = $false
     try {
@@ -461,7 +486,10 @@ function Build-Application {
 }
 
 function New-ProductionAppSettings {
-    param([hashtable]$Config)
+    param(
+        [hashtable]$Config,
+        [string]$OutputDir
+    )
 
     if (-not (Test-Path $templatePath)) {
         throw "Template fehlt: deploy\appsettings.Production.template.json"
@@ -486,13 +514,29 @@ function New-ProductionAppSettings {
         -replace '\{\{TOKEN_SECRET\}\}', ($Config.TokenSecret -replace '\$','$$$$')
 
     if ([string]::IsNullOrWhiteSpace([string]$Config.OpenAiEndpoint) -or [string]::IsNullOrWhiteSpace([string]$Config.OpenAiApiKey)) {
-        throw "OpenAI Endpoint/ApiKey fehlen in der Deploy-Konfiguration. .\DEPLOY-PRODUCTION.ps1 -Reconfigure"
+        throw "OpenAI Endpoint/ApiKey fehlen. .\DEPLOY-PRODUCTION.ps1 -WithConfiguration"
     }
 
-    $outPath = Join-Path $buildOutput "appsettings.Production.json"
+    $outPath = Join-Path $OutputDir "appsettings.Production.json"
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false
     [System.IO.File]::WriteAllText($outPath, $content.Trim() + "`n", $utf8NoBom)
-    Write-OK "appsettings.Production.json erzeugt"
+    Write-OK "appsettings.Production.json erzeugt (wird auf den Server geschrieben)"
+}
+
+function Remove-StagedServerConfig {
+    param([string]$Dir)
+
+    $names = @(
+        "appsettings.Production.json",
+        "appsettings.Development.json",
+        ".env"
+    )
+    foreach ($name in $names) {
+        $path = Join-Path $Dir $name
+        if (Test-Path $path) {
+            Remove-Item $path -Force
+        }
+    }
 }
 
 function Publish-ToServer {
@@ -514,9 +558,25 @@ function Publish-ToServer {
     }
 
     if (Test-Path $stagingDir) { Remove-Item -Recurse -Force $stagingDir }
+    New-Item -ItemType Directory -Path $apiStaging -Force | Out-Null
     New-Item -ItemType Directory -Path $mcpStaging -Force | Out-Null
+
+    Copy-Item (Join-Path $buildOutput "*") $apiStaging -Recurse -Force
     Copy-Item (Join-Path $root "chatgpt\index.js") $mcpStaging
     Copy-Item (Join-Path $root "chatgpt\package.json") $mcpStaging
+
+    if ($WithConfiguration) {
+        New-ProductionAppSettings -Config $Config -OutputDir $apiStaging
+        $mcpEnv = Join-Path $root "chatgpt\.env"
+        if (Test-Path $mcpEnv) {
+            Copy-Item $mcpEnv $mcpStaging -Force
+            Write-OK "chatgpt\\.env wird mitdeployed"
+        }
+    } else {
+        Remove-StagedServerConfig $apiStaging
+        Remove-StagedServerConfig $mcpStaging
+        Write-OK "Server-Config bleibt unberuehrt (kein appsettings.Production.json, kein .env, keine systemd-Units)"
+    }
 
     Write-Header "Upload nach $sshTarget"
 
@@ -527,7 +587,13 @@ if command -v loginctl >/dev/null 2>&1; then loginctl enable-linger `$(whoami) 2
 "@ -replace "`r", ""
     Invoke-SshCommand $sshTarget $setupScript
 
-    # Laufende Binaries freigeben, sonst schlaegt scp mit "dest open ... Failure" fehl
+    if (-not $WithConfiguration) {
+        $remoteCfg = Invoke-SshCapture $sshTarget "test -f '$($Config.RemoteAppDir)/appsettings.Production.json' && echo ok"
+        if ($remoteCfg.Output -notmatch "ok") {
+            throw "Auf dem Server fehlt $($Config.RemoteAppDir)/appsettings.Production.json. Erstes Setup: .\DEPLOY-PRODUCTION.ps1 -WithConfiguration"
+        }
+    }
+
     Write-Step "Dienste kurz stoppen (Upload)..."
     $stopScript = @"
 systemctl --user stop mcp.service hotelchatbot-api.service 2>/dev/null || true
@@ -536,19 +602,12 @@ sleep 2
     Invoke-SshCommand $sshTarget $stopScript
 
     Write-Step "API hochladen (kann einige Minuten dauern)..."
-    Invoke-ScpRecursive "$buildOutput/*" "${sshTarget}:$($Config.RemoteAppDir)/"
-
-    # Optional lokale MCP-.env (Challenge-Token etc.) mit hochladen, wenn vorhanden
-    $mcpEnv = Join-Path $root "chatgpt\.env"
-    if (Test-Path $mcpEnv) {
-        Copy-Item $mcpEnv $mcpStaging -Force
-        Write-OK "chatgpt\\.env wird mitdeployed (Challenge-Token / Overrides)"
-    }
+    Invoke-ScpRecursive "$apiStaging/*" "${sshTarget}:$($Config.RemoteAppDir)/"
 
     Write-Step "MCP hochladen..."
     Invoke-ScpRecursive "$mcpStaging/*" "${sshTarget}:$($Config.RemoteMcpDir)/"
 
-    Write-Step "Node.js pruefen/installieren, npm und systemd..."
+    Write-Step "Node.js pruefen/installieren, npm und Dienste..."
     $nodeBootstrap = Get-RemoteNodeBootstrapScript
     $nodeResult = Invoke-SshCapture $sshTarget $nodeBootstrap
     if ($nodeResult.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($nodeResult.Output)) {
@@ -560,36 +619,48 @@ sleep 2
     }
     Write-OK "Node.js: $nodeBin"
 
-    $apiService = (Get-Content (Join-Path $root "deploy\systemd\hotelchatbot-api.service") -Raw) `
-        -replace '\{\{REMOTE_APP_DIR\}\}', $Config.RemoteAppDir `
-        -replace '\{\{API_PORT\}\}', $Config.ApiPort
-    $mcpService = (Get-Content (Join-Path $root "deploy\systemd\mcp.service") -Raw) `
-        -replace '\{\{REMOTE_MCP_DIR\}\}', $Config.RemoteMcpDir `
-        -replace '\{\{REMOTE_APP_DIR\}\}', $Config.RemoteAppDir `
-        -replace '\{\{API_PORT\}\}', $Config.ApiPort `
-        -replace '\{\{MCP_PORT\}\}', $Config.McpPort `
-        -replace '\{\{NODE_BIN\}\}', $nodeBin
-
-    $apiB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($apiService))
-    $mcpB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($mcpService))
-
     $remoteScript = @"
 set -e
 export NVM_DIR="`$HOME/.nvm"
-[ -s "`$NVM_DIR/nvm.sh" ] && . "`$NVM_DIR/nvm.sh"
+[ -s "`$NVM_DIR/nvm.sh" ] && . `$NVM_DIR/nvm.sh
 chmod +x '$($Config.RemoteAppDir)/HotelChatbot.Api'
 cd '$($Config.RemoteMcpDir)'
 npm install --omit=dev --no-audit --no-fund
+"@
+
+    if ($WithConfiguration) {
+        $apiService = (Get-Content (Join-Path $root "deploy\systemd\hotelchatbot-api.service") -Raw) `
+            -replace '\{\{REMOTE_APP_DIR\}\}', $Config.RemoteAppDir `
+            -replace '\{\{API_PORT\}\}', $Config.ApiPort
+        $mcpService = (Get-Content (Join-Path $root "deploy\systemd\mcp.service") -Raw) `
+            -replace '\{\{REMOTE_MCP_DIR\}\}', $Config.RemoteMcpDir `
+            -replace '\{\{REMOTE_APP_DIR\}\}', $Config.RemoteAppDir `
+            -replace '\{\{API_PORT\}\}', $Config.ApiPort `
+            -replace '\{\{MCP_PORT\}\}', $Config.McpPort `
+            -replace '\{\{NODE_BIN\}\}', $nodeBin
+
+        $apiB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($apiService))
+        $mcpB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($mcpService))
+
+        $remoteScript += @"
+
 mkdir -p `$HOME/.config/systemd/user
 echo '$apiB64' | base64 -d > `$HOME/.config/systemd/user/hotelchatbot-api.service
 echo '$mcpB64' | base64 -d > `$HOME/.config/systemd/user/mcp.service
 systemctl --user daemon-reload
 systemctl --user enable hotelchatbot-api.service mcp.service
+"@
+        Write-OK "systemd-Units werden neu geschrieben"
+    }
+
+    $remoteScript += @"
+
 systemctl --user restart hotelchatbot-api.service
 sleep 5
 systemctl --user restart mcp.service
 sleep 2
-"@ -replace "`r", ""
+"@
+    $remoteScript = $remoteScript -replace "`r", ""
     Invoke-SshCommand $sshTarget $remoteScript
 
     Test-ProductionDeployment -Config $Config -SshTarget $sshTarget
@@ -610,6 +681,11 @@ function Show-Summary {
     Write-Host "  Legacy (nur Uebergang): $($Config.PublicUrl)/sse" -ForegroundColor Gray
     Write-Host "  Health: $($Config.PublicUrl)/health" -ForegroundColor Gray
     Write-Host ""
+    if (-not $WithConfiguration) {
+        Write-Host "  Server-Konfiguration wurde nicht geaendert." -ForegroundColor Gray
+        Write-Host "  Zum Ueberschreiben: .\DEPLOY-PRODUCTION.ps1 -WithConfiguration" -ForegroundColor Gray
+        Write-Host ""
+    }
     Write-Host "  Falls von aussen noch 502 kommt, Mynet bitten:" -ForegroundColor Yellow
     Write-Host "  $($Config.PublicUrl) -> http://127.0.0.1:$($Config.McpPort)" -ForegroundColor Gray
     Write-Host "  Pfade: /, /mcp, /sse, /health, /.well-known/" -ForegroundColor Gray
@@ -626,32 +702,23 @@ function Show-Summary {
 Write-Header "BestWellness Production Deploy"
 
 $cfg = Load-DeployConfig
-$hasConfig = ($null -ne $cfg)
-$missingKeys = if ($hasConfig) { Test-ConfigComplete $cfg } else { @("production.settings.json") }
 
-if ($NonInteractive) {
-    if (-not $hasConfig) {
-        throw "NonInteractive: deploy/production.settings.json fehlt."
+if ($WithConfiguration) {
+    $missingKeys = Test-ConfigComplete $cfg
+    if ($NonInteractive) {
+        if ($Reconfigure) {
+            throw "NonInteractive: -Reconfigure ist nicht erlaubt (wuerde nach Eingaben fragen)."
+        }
+        if ($missingKeys.Count -gt 0) {
+            throw "NonInteractive -WithConfiguration: Konfiguration unvollstaendig: $($missingKeys -join ', ')"
+        }
+    } else {
+        $cfg = Initialize-DeployConfig -Existing $cfg -Force:$Reconfigure
     }
-    if ($missingKeys.Count -gt 0) {
-        throw "NonInteractive: Konfiguration unvollstaendig: $($missingKeys -join ', ')"
-    }
-    if ($Reconfigure) {
-        throw "NonInteractive: -Reconfigure ist nicht erlaubt (wuerde nach Eingaben fragen)."
-    }
-} elseif ($Reconfigure -or -not $hasConfig -or $missingKeys.Count -gt 0) {
-    $cfg = Initialize-DeployConfig -Existing $cfg -Force:$Reconfigure
-} elseif (-not $BuildOnly -and -not $SkipBuild) {
-    Write-Host ""
-    Write-Host "  Gespeicherte Konfiguration: $($cfg.SshUser)@$($cfg.SshHost)" -ForegroundColor Gray
-    Write-Host "  [Enter] Deploy starten   [E] Konfiguration   [B] Nur bauen   [Q] Beenden" -ForegroundColor Gray
-    $choice = Read-Host "  Auswahl"
-    switch ($choice.ToUpper()) {
-        "E" { $cfg = Initialize-DeployConfig -Existing $cfg -Force; $Reconfigure = $true }
-        "B" { $BuildOnly = $true }
-        "Q" { exit 0 }
-        default { }
-    }
+} else {
+    Write-Host "  Ziel: $($cfg.SshUser)@$($cfg.SshHost)" -ForegroundColor Gray
+    Write-Host "  Server-Konfiguration bleibt unveraendert." -ForegroundColor Gray
+    Write-Host "  (Ueberschreiben nur mit -WithConfiguration)" -ForegroundColor DarkGray
 }
 
 try {
@@ -660,8 +727,6 @@ try {
     } elseif (-not (Test-Path (Join-Path $buildOutput "HotelChatbot.Api"))) {
         throw "Kein Build in publish\linux-x64. Starten Sie ohne -SkipBuild."
     }
-
-    New-ProductionAppSettings $cfg
 
     if ($BuildOnly) {
         Write-OK "Nur Build - kein Upload."

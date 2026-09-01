@@ -31,13 +31,15 @@ const CORS_ORIGINS = (process.env.CORS_ORIGINS || "")
   .filter(Boolean);
 
 const SERVER_NAME = "Bestwellness Hotel Database";
-const SERVER_VERSION = "1.0.3";
+const SERVER_VERSION = "1.0.4";
 
 const FALLBACK_NO_RESULT =
   "No matching hotels were found in the BestWellness database for your request.";
 
 const FALLBACK_GET_RESPONSE_DESC = `Search Best Alpine Wellness Hotels using only the internal hotel database.
 Call this tool for hotel search and recommendation questions.
+Always pass sessionId from the previous get_response result when one was returned.
+Always pass language as the ISO 639-1 code of the user's chat (de, en, nl, it, fr, …).
 Never invent hotels, prices, availability, or amenities. Use only tool results.`;
 
 const FALLBACK_GET_HOTEL_DETAILS_DESC = `Return details for one hotel from the BestWellness database using a stable hotelId from a previous search.
@@ -211,16 +213,16 @@ function mapHotelFromRecommendation(r) {
 function composeSearchMessage(args) {
   const parts = [];
   if (args.message) parts.push(String(args.message).trim());
-  if (args.region) parts.push(`Region: ${args.region}`);
-  if (args.travelDates) parts.push(`Travel dates: ${args.travelDates}`);
-  if (args.guests != null) parts.push(`Guests: ${args.guests}`);
-  if (args.adultsOnly === true) parts.push("Adults only");
-  if (args.adultsOnly === false) parts.push("Family-friendly / children welcome preferred");
-  if (args.budget) parts.push(`Budget: ${args.budget}`);
-  if (args.dogsAllowed === true) parts.push("Dogs allowed / pet-friendly");
-  if (args.dogsAllowed === false) parts.push("No dogs");
-  if (args.wellnessFocus) parts.push(`Wellness focus: ${args.wellnessFocus}`);
-  return parts.filter(Boolean).join(". ");
+  if (args.region) parts.push(String(args.region).trim());
+  if (args.wellnessFocus) parts.push(String(args.wellnessFocus).trim());
+  if (args.travelDates) parts.push(String(args.travelDates).trim());
+  if (args.guests != null) parts.push(String(args.guests));
+  if (args.adultsOnly === true) parts.push("adults only");
+  if (args.adultsOnly === false) parts.push("family");
+  if (args.budget) parts.push(String(args.budget).trim());
+  if (args.dogsAllowed === true) parts.push("dogs");
+  if (args.dogsAllowed === false) parts.push("no dogs");
+  return parts.filter(Boolean).join(" ");
 }
 
 function toolResultFromRecommendApi(apiResponse) {
@@ -284,6 +286,7 @@ async function executeTool(toolName, args) {
     const apiResponse = await callDotNetApi("/api/chat/recommend", "POST", {
       Requirements: requirements,
       SessionId: args.sessionId || null,
+      Language: args.language || null,
       MinConfidence: 0.45
     });
     if (_lastCall?.error === "timeout") {
@@ -342,7 +345,7 @@ function createMcpServer() {
     },
     {
       instructions:
-        "Use get_response to search hotels, then get_hotel_details with a hotelId from the search. Only use data returned by tools. Do not invent prices, availability, or amenities."
+        "Use get_response to search hotels, then get_hotel_details with a hotelId from the search. Always pass sessionId from the previous tool result and language as the user's chat ISO code (de, en, …). Only use data returned by tools. Do not invent prices, availability, or amenities."
     }
   );
 
@@ -369,7 +372,15 @@ function createMcpServer() {
         sessionId: z
           .string()
           .optional()
-          .describe("Session id from a previous get_response (needed for „weitere Quellen“ / follow-ups)")
+          .describe(
+            "Session id from a previous get_response result. Pass it on every follow-up, including after a clarification."
+          ),
+        language: z
+          .string()
+          .optional()
+          .describe(
+            "ISO 639-1 code of the user's conversation language (de, en, nl, it, fr, …). Pass on every call."
+          )
       },
       annotations: {
         readOnlyHint: true,
@@ -493,6 +504,8 @@ function getLegacyMcpTools() {
           adultsOnly: { type: "boolean" },
           budget: { type: "string" },
           dogsAllowed: { type: "boolean" },
+          sessionId: { type: "string", description: "Session id from a previous get_response result" },
+          language: { type: "string", description: "ISO 639-1 code of the user's chat (de, en, …)" },
           wellnessFocus: { type: "string" }
         }
       },

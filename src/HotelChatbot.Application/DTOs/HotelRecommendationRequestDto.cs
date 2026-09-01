@@ -17,7 +17,7 @@ public class HotelRecommendationRequestDto
     public int MaxResults { get; set; } = 3;
 
     /// <summary>
-    /// Sprache der Antwort (optional — wird automatisch erkannt wenn nicht angegeben)
+    /// Sprache der Antwort. Nur Tie-Breaker bei Mehrdeutigkeit, kein harter Override.
     /// </summary>
     public string? Language { get; set; }
 
