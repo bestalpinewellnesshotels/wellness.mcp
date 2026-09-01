@@ -1,0 +1,12 @@
+﻿══════════════════════════════════════════════════════════════════════
+[2026-09-01 15:31:59]  ANFRAGE OK
+  Query    : Hotels in Tirol mit Sauna
+  Language : de
+  Prompt   : classifier.intent
+
+  ┌─ Prompt-Inhalt ───────────────────────────────────────────────────
+  │ local BinaryTextClassifier (in_scope/out_of_scope)
+  └──────────────────────────────────────────────────────────────────
+
+  Ergebnis : JA  →  Anfrage wird weiterverarbeitet
+

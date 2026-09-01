@@ -57,7 +57,7 @@ pm2 save
 ## 6. Verifizieren
 ```bash
 curl http://localhost:3001
-# Sollte antworten: "HotelChatbot MCP Server V1.0.1 ready"
+# Sollte antworten: "HotelChatbot MCP Server V1.0.2 ready"
 ```
 EOF
 

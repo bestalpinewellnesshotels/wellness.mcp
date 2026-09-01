@@ -471,9 +471,9 @@ function New-ProductionAppSettings {
     $pgConn = "Host=$($Config.PostgresHost);Port=$($Config.PostgresPort);Database=$($Config.PostgresDatabase);Username=$($Config.PostgresUser);Password=$($Config.PostgresPassword);SSL Mode=Prefer;Trust Server Certificate=true"
 
     $content = $template `
-        -replace '\{\{POSTGRES_CONNECTION_STRING\}\}', ($pgConn -replace '\\','\\\\') `
-        -replace '\{\{OPENAI_ENDPOINT\}\}', $Config.OpenAiEndpoint `
-        -replace '\{\{OPENAI_API_KEY\}\}', $Config.OpenAiApiKey `
+        -replace '\{\{POSTGRES_CONNECTION_STRING\}\}', ($pgConn -replace '\\','\\\\' -replace '\$','$$$$') `
+        -replace '\{\{OPENAI_ENDPOINT\}\}', ($Config.OpenAiEndpoint -replace '\$','$$$$') `
+        -replace '\{\{OPENAI_API_KEY\}\}', ($Config.OpenAiApiKey -replace '\$','$$$$') `
         -replace '\{\{OPENAI_DEPLOYMENT\}\}', $Config.OpenAiDeploymentName `
         -replace '\{\{OPENAI_EMBEDDING_DEPLOYMENT\}\}', $Config.OpenAiEmbeddingDeployment `
         -replace '\{\{OPENAI_EMBEDDING_DIMENSIONS\}\}', $Config.OpenAiEmbeddingDimensions `
@@ -481,11 +481,17 @@ function New-ProductionAppSettings {
         -replace '\{\{SPEECH_REGION\}\}', $Config.SpeechServiceRegion `
         -replace '\{\{ELEVENLABS_KEY\}\}', $Config.ElevenLabsApiKey `
         -replace '\{\{ELEVENLABS_VOICE\}\}', $Config.ElevenLabsVoiceId `
-        -replace '\{\{ADMIN_PASSWORD\}\}', $Config.AdminPassword `
-        -replace '\{\{HOTEL_PASSWORD\}\}', $Config.HotelPassword `
-        -replace '\{\{TOKEN_SECRET\}\}', $Config.TokenSecret
+        -replace '\{\{ADMIN_PASSWORD\}\}', ($Config.AdminPassword -replace '\$','$$$$') `
+        -replace '\{\{HOTEL_PASSWORD\}\}', ($Config.HotelPassword -replace '\$','$$$$') `
+        -replace '\{\{TOKEN_SECRET\}\}', ($Config.TokenSecret -replace '\$','$$$$')
 
-    $content | Set-Content (Join-Path $buildOutput "appsettings.Production.json") -Encoding UTF8
+    if ([string]::IsNullOrWhiteSpace([string]$Config.OpenAiEndpoint) -or [string]::IsNullOrWhiteSpace([string]$Config.OpenAiApiKey)) {
+        throw "OpenAI Endpoint/ApiKey fehlen in der Deploy-Konfiguration. .\DEPLOY-PRODUCTION.ps1 -Reconfigure"
+    }
+
+    $outPath = Join-Path $buildOutput "appsettings.Production.json"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($outPath, $content.Trim() + "`n", $utf8NoBom)
     Write-OK "appsettings.Production.json erzeugt"
 }
 

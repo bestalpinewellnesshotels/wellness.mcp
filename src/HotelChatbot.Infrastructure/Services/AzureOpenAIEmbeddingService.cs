@@ -24,10 +24,12 @@ public class AzureOpenAIEmbeddingService : IEmbeddingService
     {
         _logger = logger;
 
-        var apiKey = configuration["OpenAI:ApiKey"]
-            ?? throw new InvalidOperationException("OpenAI API Key nicht konfiguriert");
-        var endpoint = configuration["OpenAI:Endpoint"]
-            ?? throw new InvalidOperationException("OpenAI Endpoint nicht konfiguriert");
+        var apiKey = configuration["OpenAI:ApiKey"];
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException("OpenAI API Key nicht konfiguriert");
+        var endpoint = configuration["OpenAI:Endpoint"];
+        if (string.IsNullOrWhiteSpace(endpoint))
+            throw new InvalidOperationException("OpenAI Endpoint nicht konfiguriert");
         var embeddingDeployment = configuration["OpenAI:EmbeddingDeploymentName"]
             ?? throw new InvalidOperationException("OpenAI EmbeddingDeploymentName nicht konfiguriert");
 

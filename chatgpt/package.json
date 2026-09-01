@@ -1,6 +1,6 @@
 {
   "name": "hotelchatbot-mcp-server",
-  "version": "6.0.0",
+  "version": "1.0.2",
   "description": "MCP Server for Best Alpine Wellness Hotels (ChatGPT / OpenAI Apps)",
   "type": "module",
   "main": "index.js",

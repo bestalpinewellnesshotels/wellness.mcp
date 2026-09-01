@@ -31,7 +31,7 @@ const CORS_ORIGINS = (process.env.CORS_ORIGINS || "")
   .filter(Boolean);
 
 const SERVER_NAME = "Bestwellness Hotel Database";
-const SERVER_VERSION = "6.0.0";
+const SERVER_VERSION = "1.0.2";
 
 const FALLBACK_NO_RESULT =
   "No matching hotels were found in the BestWellness database for your request.";
@@ -223,6 +223,58 @@ function composeSearchMessage(args) {
   return parts.filter(Boolean).join(". ");
 }
 
+function toolResultFromRecommendApi(apiResponse) {
+  if (!apiResponse) {
+    return buildResult(FALLBACK_NO_RESULT, "error", { hotels: [] });
+  }
+  const responseType = apiResponse.responseType || "unknown";
+  const hotels = Array.isArray(apiResponse.recommendations)
+    ? apiResponse.recommendations.map(mapHotelFromRecommendation)
+    : [];
+  const answer =
+    apiResponse.finalAnswer || apiResponse.message || FALLBACK_NO_RESULT;
+  const citedSources = Array.isArray(apiResponse.citedSources)
+    ? apiResponse.citedSources
+    : [];
+  const additionalSources = Array.isArray(apiResponse.additionalSources)
+    ? apiResponse.additionalSources
+    : [];
+  const hotelScores = Array.isArray(apiResponse.hotelScores)
+    ? apiResponse.hotelScores
+    : [];
+  const okType =
+    hotels.length > 0 ||
+    responseType === "catalog" ||
+    responseType === "more_sources" ||
+    responseType === "recommendations";
+  return buildResult(answer, okType ? responseType : responseType || "no_results", {
+    hotels,
+    sessionId: apiResponse.sessionId || null,
+    responseType,
+    vectorQuery: apiResponse.vectorQuery || null,
+    citedSources,
+    additionalSources,
+    hotelScores,
+    moreSourcesHint:
+      additionalSources.length > 0
+        ? 'Reply with „weitere Quellen“ / “more sources” to see the rest.'
+        : null
+  });
+}
+
+function toolResultFromDetailsApi(apiResponse) {
+  const responseType = apiResponse?.responseType || "unknown";
+  const hotel = apiResponse?.hotel || null;
+  const sources = Array.isArray(apiResponse?.sources) ? apiResponse.sources : [];
+  if (apiResponse?.finalAnswer) {
+    return buildResult(apiResponse.finalAnswer, responseType, { hotel, sources });
+  }
+  if (apiResponse?.message) {
+    return buildResult(apiResponse.message, responseType, { hotel, sources });
+  }
+  return buildResult(FALLBACK_NO_RESULT, "no_results", { hotel, sources });
+}
+
 async function executeTool(toolName, args) {
   if (toolName === "get_response") {
     const requirements = composeSearchMessage(args);
@@ -265,16 +317,7 @@ async function executeTool(toolName, args) {
         "error"
       );
     }
-    const responseType = apiResponse?.responseType || "unknown";
-    const hotel = apiResponse?.hotel || null;
-    const sources = Array.isArray(apiResponse?.sources) ? apiResponse.sources : [];
-    if (apiResponse?.finalAnswer) {
-      return buildResult(apiResponse.finalAnswer, responseType, { hotel, sources });
-    }
-    if (apiResponse?.message) {
-      return buildResult(apiResponse.message, responseType, { hotel, sources });
-    }
-    return buildResult(FALLBACK_NO_RESULT, "no_results", { hotel, sources });
+    return toolResultFromDetailsApi(apiResponse);
   }
 
   return buildResult(FALLBACK_NO_RESULT, "no_results");
@@ -567,59 +610,6 @@ function writeSimSse(res, eventName, payload) {
   res.write(`event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`);
 }
 
-function toolResultFromRecommendApi(apiResponse) {
-  if (!apiResponse) {
-    return buildResult(FALLBACK_NO_RESULT, "error", { hotels: [] });
-  }
-  const responseType = apiResponse.responseType || "unknown";
-  const hotels = Array.isArray(apiResponse.recommendations)
-    ? apiResponse.recommendations.map(mapHotelFromRecommendation)
-    : [];
-  const answer =
-    apiResponse.finalAnswer || apiResponse.message || FALLBACK_NO_RESULT;
-  const citedSources = Array.isArray(apiResponse.citedSources)
-    ? apiResponse.citedSources
-    : [];
-  const additionalSources = Array.isArray(apiResponse.additionalSources)
-    ? apiResponse.additionalSources
-    : [];
-  const hotelScores = Array.isArray(apiResponse.hotelScores)
-    ? apiResponse.hotelScores
-    : [];
-  const okType =
-    hotels.length > 0 ||
-    responseType === "catalog" ||
-    responseType === "more_sources" ||
-    responseType === "recommendations";
-  return buildResult(answer, okType ? responseType : responseType || "no_results", {
-    hotels,
-    sessionId: apiResponse.sessionId || null,
-    responseType,
-    vectorQuery: apiResponse.vectorQuery || null,
-    citedSources,
-    additionalSources,
-    hotelScores,
-    // ChatGPT hat keine App-Buttons für MCP-Text-Tools — Hinweis im answer + dieses Feld
-    moreSourcesHint:
-      additionalSources.length > 0
-        ? 'Reply with „weitere Quellen“ / “more sources” to see the rest.'
-        : null
-  });
-}
-
-function toolResultFromDetailsApi(apiResponse) {
-  const responseType = apiResponse?.responseType || "unknown";
-  const hotel = apiResponse?.hotel || null;
-  const sources = Array.isArray(apiResponse?.sources) ? apiResponse.sources : [];
-  if (apiResponse?.finalAnswer) {
-    return buildResult(apiResponse.finalAnswer, responseType, { hotel, sources });
-  }
-  if (apiResponse?.message) {
-    return buildResult(apiResponse.message, responseType, { hotel, sources });
-  }
-  return buildResult(FALLBACK_NO_RESULT, "no_results", { hotel, sources });
-}
-
 /**
  * Live ChatGPT simulation: streams pipeline steps + exact MCP tool payload.
  * Body: { message, hotelId?, sessionId?, language? }
@@ -752,11 +742,16 @@ app.post("/sim/chat", async (req, res) => {
 }
 
 app.get("/", (_req, res) => {
-  res.type("text/plain").send("Bestwellness MCP Server ready");
+  res.type("text/plain").send(`Bestwellness MCP Server v${SERVER_VERSION} ready`);
 });
 
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
+  res.json({
+    status: "ok",
+    version: SERVER_VERSION,
+    name: SERVER_NAME,
+    sim: ENABLE_SIM
+  });
 });
 
 app.get("/.well-known/openai-apps-challenge", (_req, res) => {
