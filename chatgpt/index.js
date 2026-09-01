@@ -31,7 +31,7 @@ const CORS_ORIGINS = (process.env.CORS_ORIGINS || "")
   .filter(Boolean);
 
 const SERVER_NAME = "Bestwellness Hotel Database";
-const SERVER_VERSION = "1.0.2";
+const SERVER_VERSION = "1.0.3";
 
 const FALLBACK_NO_RESULT =
   "No matching hotels were found in the BestWellness database for your request.";
