@@ -23,42 +23,104 @@ jobs:
 
       - name: Configure SSH key
         shell: pwsh
+        env:
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
         run: |
-          New-Item -ItemType Directory -Path "$env:USERPROFILE\.ssh" -Force | Out-Null
-          "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" | Out-File -FilePath "$env:USERPROFILE\.ssh\id_ed25519_bestalpine" -Encoding ascii -NoNewline
-          icacls "$env:USERPROFILE\.ssh\id_ed25519_bestalpine" /inheritance:r /grant:r "$env:USERNAME`:F" | Out-Null
+          if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_PRIVATE_KEY)) {
+            throw "Secret DEPLOY_SSH_PRIVATE_KEY fehlt."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_HOST)) {
+            throw "Secret DEPLOY_SSH_HOST fehlt."
+          }
+
+          $sshDir = Join-Path $env:USERPROFILE ".ssh"
+          New-Item -ItemType Directory -Path $sshDir -Force | Out-Null
+
+          $keyPath = Join-Path $sshDir "id_ed25519_bestalpine"
+          $key = $env:DEPLOY_SSH_PRIVATE_KEY -replace "`r`n", "`n" -replace "`r", "`n"
+          if (-not $key.EndsWith("`n")) { $key += "`n" }
+          [System.IO.File]::WriteAllText($keyPath, $key)
+          icacls $keyPath /inheritance:r /grant:r "$env:USERNAME`:F" | Out-Null
+
+          ssh-keyscan -H $env:DEPLOY_SSH_HOST 2>$null |
+            Out-File -FilePath (Join-Path $sshDir "known_hosts") -Encoding ascii -Append
 
       - name: Write production settings
         shell: pwsh
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_PUBLIC_URL: ${{ secrets.DEPLOY_PUBLIC_URL }}
+          POSTGRES_DATABASE: ${{ secrets.POSTGRES_DATABASE }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_DEPLOYMENT: ${{ secrets.OPENAI_DEPLOYMENT }}
+          OPENAI_EMBEDDING_DEPLOYMENT: ${{ secrets.OPENAI_EMBEDDING_DEPLOYMENT }}
+          OPENAI_EMBEDDING_DIMENSIONS: ${{ secrets.OPENAI_EMBEDDING_DIMENSIONS }}
+          SPEECH_KEY: ${{ secrets.SPEECH_KEY }}
+          SPEECH_REGION: ${{ secrets.SPEECH_REGION }}
+          ELEVENLABS_KEY: ${{ secrets.ELEVENLABS_KEY }}
+          ELEVENLABS_VOICE: ${{ secrets.ELEVENLABS_VOICE }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          HOTEL_PASSWORD: ${{ secrets.HOTEL_PASSWORD }}
+          TOKEN_SECRET: ${{ secrets.TOKEN_SECRET }}
         run: |
-          $settings = @{
-            SshHost = "${{ secrets.DEPLOY_SSH_HOST }}"
-            SshUser = "${{ secrets.DEPLOY_SSH_USER }}"
-            PublicUrl = "${{ secrets.DEPLOY_PUBLIC_URL }}"
-            RemoteAppDir = "/data/web/mcp/home/app"
-            RemoteMcpDir = "/data/web/mcp/home/mcp"
-            PostgresHost = "localhost"
-            PostgresPort = 5432
-            PostgresDatabase = "${{ secrets.POSTGRES_DATABASE }}"
-            PostgresUser = "${{ secrets.POSTGRES_USER }}"
-            PostgresPassword = "${{ secrets.POSTGRES_PASSWORD }}"
-            OpenAiEndpoint = "${{ secrets.OPENAI_ENDPOINT }}"
-            OpenAiApiKey = "${{ secrets.OPENAI_API_KEY }}"
-            OpenAiDeploymentName = "${{ secrets.OPENAI_DEPLOYMENT }}"
-            OpenAiEmbeddingDeployment = "${{ secrets.OPENAI_EMBEDDING_DEPLOYMENT }}"
-            OpenAiEmbeddingDimensions = "${{ secrets.OPENAI_EMBEDDING_DIMENSIONS }}"
-            SpeechSubscriptionKey = "${{ secrets.SPEECH_KEY }}"
-            SpeechServiceRegion = "${{ secrets.SPEECH_REGION }}"
-            ElevenLabsApiKey = "${{ secrets.ELEVENLABS_KEY }}"
-            ElevenLabsVoiceId = "${{ secrets.ELEVENLABS_VOICE }}"
-            AdminPassword = "${{ secrets.ADMIN_PASSWORD }}"
-            HotelPassword = "${{ secrets.HOTEL_PASSWORD }}"
-            TokenSecret = "${{ secrets.TOKEN_SECRET }}"
-            ApiPort = 8080
-            McpPort = 3001
+          function Coalesce([string]$Value, [string]$Default) {
+            if ([string]::IsNullOrWhiteSpace($Value)) { return $Default }
+            return $Value
           }
+
+          $required = [ordered]@{
+            DEPLOY_SSH_HOST   = $env:DEPLOY_SSH_HOST
+            DEPLOY_SSH_USER   = $env:DEPLOY_SSH_USER
+            DEPLOY_PUBLIC_URL = $env:DEPLOY_PUBLIC_URL
+            POSTGRES_DATABASE = $env:POSTGRES_DATABASE
+            POSTGRES_USER     = $env:POSTGRES_USER
+            POSTGRES_PASSWORD = $env:POSTGRES_PASSWORD
+            OPENAI_ENDPOINT   = $env:OPENAI_ENDPOINT
+            OPENAI_API_KEY    = $env:OPENAI_API_KEY
+            ADMIN_PASSWORD    = $env:ADMIN_PASSWORD
+            HOTEL_PASSWORD    = $env:HOTEL_PASSWORD
+            TOKEN_SECRET      = $env:TOKEN_SECRET
+          }
+          $missing = @($required.GetEnumerator() | Where-Object { [string]::IsNullOrWhiteSpace([string]$_.Value) } | ForEach-Object { $_.Key })
+          if ($missing.Count -gt 0) {
+            throw "Pflicht-Secrets fehlen: $($missing -join ', '). Siehe deploy/GITHUB-ACTIONS-SETUP.md"
+          }
+
+          $settings = [ordered]@{
+            SshHost                   = $env:DEPLOY_SSH_HOST
+            SshUser                   = $env:DEPLOY_SSH_USER
+            PublicUrl                 = $env:DEPLOY_PUBLIC_URL.TrimEnd('/')
+            RemoteAppDir              = "/data/web/mcp/home/app"
+            RemoteMcpDir              = "/data/web/mcp/home/mcp"
+            PostgresHost              = "localhost"
+            PostgresPort              = 5432
+            PostgresDatabase          = $env:POSTGRES_DATABASE
+            PostgresUser              = $env:POSTGRES_USER
+            PostgresPassword          = $env:POSTGRES_PASSWORD
+            OpenAiEndpoint            = $env:OPENAI_ENDPOINT
+            OpenAiApiKey              = $env:OPENAI_API_KEY
+            OpenAiDeploymentName      = (Coalesce $env:OPENAI_DEPLOYMENT "gpt-4.1-mini")
+            OpenAiEmbeddingDeployment = (Coalesce $env:OPENAI_EMBEDDING_DEPLOYMENT "text-embedding-3-small")
+            OpenAiEmbeddingDimensions = (Coalesce $env:OPENAI_EMBEDDING_DIMENSIONS "1536")
+            SpeechSubscriptionKey     = (Coalesce $env:SPEECH_KEY "")
+            SpeechServiceRegion       = (Coalesce $env:SPEECH_REGION "germanywestcentral")
+            ElevenLabsApiKey          = (Coalesce $env:ELEVENLABS_KEY "")
+            ElevenLabsVoiceId         = (Coalesce $env:ELEVENLABS_VOICE "")
+            AdminPassword             = $env:ADMIN_PASSWORD
+            HotelPassword             = $env:HOTEL_PASSWORD
+            TokenSecret               = $env:TOKEN_SECRET
+            ApiPort                   = 8080
+            McpPort                   = 3001
+          }
+
           New-Item -ItemType Directory -Path deploy -Force | Out-Null
           $settings | ConvertTo-Json -Depth 5 | Set-Content deploy/production.settings.json -Encoding UTF8
+          Write-Host "production.settings.json geschrieben (Secrets nicht geloggt)."
 
       - name: Deploy to production
         shell: pwsh

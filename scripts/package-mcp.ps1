@@ -16,6 +16,7 @@ New-Item -ItemType Directory -Path $tempDir | Out-Null
 Copy-Item "chatgpt\index.js" "$tempDir\"
 Copy-Item "chatgpt\package.json" "$tempDir\"
 Copy-Item "chatgpt\README.md" "$tempDir\"
+# Simulation (sim-proxy / public) ist optional und nur fuer lokale Debug-UI noetig.
 
 # Erstelle .env
 "PORT=3001`nAPI_BASE_URL=http://localhost:5001" | Out-File -FilePath "$tempDir\.env" -Encoding UTF8

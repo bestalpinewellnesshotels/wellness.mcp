@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
@@ -10,7 +11,6 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
-import { consumeApiSse } from "./sim-proxy.mjs";
 
 dotenv.config();
 
@@ -20,6 +20,11 @@ const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:5001";
 const API_TIMEOUT_MS = Number(process.env.API_TIMEOUT_MS || 45000);
 const OPENAI_APPS_CHALLENGE_TOKEN = (process.env.OPENAI_APPS_CHALLENGE_TOKEN || "").trim();
 const ENABLE_DEBUG = process.env.ENABLE_DEBUG === "true";
+const ENABLE_SIM =
+  process.env.ENABLE_SIM === "true" ||
+  (process.env.ENABLE_SIM !== "false" &&
+    existsSync(path.join(__dirname, "sim-proxy.mjs")) &&
+    existsSync(path.join(__dirname, "public", "sim", "index.html")));
 const CORS_ORIGINS = (process.env.CORS_ORIGINS || "")
   .split(",")
   .map((s) => s.trim())
@@ -549,9 +554,10 @@ app.post("/get_hotel_details", async (req, res) =>
 );
 
 /* ============================================================
-   CHATGPT SIMULATION UI (local debugging)
+   CHATGPT SIMULATION UI (local debugging, optional)
 ============================================================ */
 
+if (ENABLE_SIM) {
 app.use("/sim", express.static(path.join(__dirname, "public", "sim")));
 app.get("/sim", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "sim", "index.html"));
@@ -619,6 +625,7 @@ function toolResultFromDetailsApi(apiResponse) {
  * Body: { message, hotelId?, sessionId?, language? }
  */
 app.post("/sim/chat", async (req, res) => {
+  const { consumeApiSse } = await import("./sim-proxy.mjs");
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -742,6 +749,7 @@ app.post("/sim/chat", async (req, res) => {
     res.end();
   }
 });
+}
 
 app.get("/", (_req, res) => {
   res.type("text/plain").send("Bestwellness MCP Server ready");
@@ -779,7 +787,7 @@ app.listen(PORT, async () => {
   console.log(`[OK] Bestwellness MCP Server v${SERVER_VERSION}`);
   console.log(`[PORT] ${PORT}`);
   console.log(`[MCP] /mcp (Streamable HTTP)`);
-  console.log(`[SIM] http://localhost:${PORT}/sim`);
+  if (ENABLE_SIM) console.log(`[SIM] http://localhost:${PORT}/sim`);
   console.log(`[LEGACY] /sse`);
   console.log(`[HEALTH] /health`);
   console.log(`[API] ${API_BASE_URL}`);

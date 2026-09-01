@@ -15,6 +15,7 @@ cp chatgpt/index.js $TEMP_DIR/
 cp chatgpt/package.json $TEMP_DIR/
 cp chatgpt/README.md $TEMP_DIR/
 cp chatgpt/.env.example $TEMP_DIR/.env
+# Simulation (sim-proxy / public) ist optional und nur fuer lokale Debug-UI noetig.
 
 echo "PORT=3001" >> $TEMP_DIR/.env
 echo "API_BASE_URL=http://localhost:5001" >> $TEMP_DIR/.env
@@ -56,7 +57,7 @@ pm2 save
 ## 6. Verifizieren
 ```bash
 curl http://localhost:3001
-# Sollte antworten: "HotelChatbot MCP Server V1.0.0 ready"
+# Sollte antworten: "HotelChatbot MCP Server V1.0.1 ready"
 ```
 EOF
 

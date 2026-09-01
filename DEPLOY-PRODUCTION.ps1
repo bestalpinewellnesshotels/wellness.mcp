@@ -384,9 +384,19 @@ function Invoke-ScpRecursive {
 function Test-SshAccess {
     param([string]$Target)
 
-    $sshArgs = @(Get-SshIdentityArgs) + @("-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=accept-new", $Target, "echo ok")
-    & ssh @sshArgs 2>$null | Out-Null
-    return ($LASTEXITCODE -eq 0)
+    # Native ssh-Fehler duerfen hier nicht terminieren (ErrorActionPreference=Stop /
+    # PSNativeCommandUseErrorActionPreference), sonst erscheint nur "Permission denied"
+    # statt der Hilfe zum Key-Setup.
+    $prevNative = $PSNativeCommandUseErrorActionPreference
+    $PSNativeCommandUseErrorActionPreference = $false
+    try {
+        $sshArgs = @(Get-SshIdentityArgs) + @("-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=accept-new", $Target, "echo ok")
+        & ssh @sshArgs 2>$null | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    }
+    finally {
+        $PSNativeCommandUseErrorActionPreference = $prevNative
+    }
 }
 
 function Show-SshHelp {
@@ -490,6 +500,9 @@ function Publish-ToServer {
 
     if (-not (Test-SshAccess $sshTarget)) {
         Show-SshHelp $sshTarget
+        if ($NonInteractive) {
+            throw "SSH ohne Key fehlgeschlagen ($sshTarget). In CI muss DEPLOY_SSH_PRIVATE_KEY greifen."
+        }
         $cont = Read-Host "Trotzdem fortfahren? [j/N]"
         if ($cont -ne "j" -and $cont -ne "J") { exit 0 }
     }
@@ -608,10 +621,21 @@ Write-Header "BestWellness Production Deploy"
 
 $cfg = Load-DeployConfig
 $hasConfig = ($null -ne $cfg)
+$missingKeys = if ($hasConfig) { Test-ConfigComplete $cfg } else { @("production.settings.json") }
 
-if ($Reconfigure -or -not $hasConfig -or (Test-ConfigComplete $cfg).Count -gt 0) {
+if ($NonInteractive) {
+    if (-not $hasConfig) {
+        throw "NonInteractive: deploy/production.settings.json fehlt."
+    }
+    if ($missingKeys.Count -gt 0) {
+        throw "NonInteractive: Konfiguration unvollstaendig: $($missingKeys -join ', ')"
+    }
+    if ($Reconfigure) {
+        throw "NonInteractive: -Reconfigure ist nicht erlaubt (wuerde nach Eingaben fragen)."
+    }
+} elseif ($Reconfigure -or -not $hasConfig -or $missingKeys.Count -gt 0) {
     $cfg = Initialize-DeployConfig -Existing $cfg -Force:$Reconfigure
-} elseif (-not $NonInteractive -and -not $BuildOnly -and -not $SkipBuild) {
+} elseif (-not $BuildOnly -and -not $SkipBuild) {
     Write-Host ""
     Write-Host "  Gespeicherte Konfiguration: $($cfg.SshUser)@$($cfg.SshHost)" -ForegroundColor Gray
     Write-Host "  [Enter] Deploy starten   [E] Konfiguration   [B] Nur bauen   [Q] Beenden" -ForegroundColor Gray
