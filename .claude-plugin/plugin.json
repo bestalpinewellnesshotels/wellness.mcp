@@ -1,6 +1,7 @@
 {
   "name": "best-alpine-wellness",
   "version": "1.0.0",
+  "license": "MIT"
   "description": "Hotelsuche, Angebote und Wellness-Inspiration der Best Alpine Wellness Hotels (4*S bis 5*S Wellnesshotels in Österreich) – wellnesshotel.com",
   "author": {
     "name": "Michaela Thaler",
