@@ -104,6 +104,8 @@ public class AdminController : ControllerBase
                 location = hotel.Location,
                 region = hotel.Region,
                 country = hotel.Country,
+                latitude = hotel.Latitude,
+                longitude = hotel.Longitude,
                 officialUrl = hotel.OfficialUrl,
                 sourceUrl = hotel.SourceUrl,
                 editorialReviewStatus = hotel.EditorialReviewStatus,
@@ -1549,6 +1551,10 @@ Sicherstellen, dass Playwright-Browser installiert sind (`playwright install chr
                 hotel.Region = NullIfBlank(request.Region);
             if (request.Country != null)
                 hotel.Country = NullIfBlank(request.Country);
+            if (request.Latitude.HasValue)
+                hotel.Latitude = request.Latitude;
+            if (request.Longitude.HasValue)
+                hotel.Longitude = request.Longitude;
             if (request.OfficialUrl != null)
                 hotel.OfficialUrl = NullIfBlank(request.OfficialUrl);
             if (request.SourceUrl != null)
@@ -1573,6 +1579,8 @@ Sicherstellen, dass Playwright-Browser installiert sind (`playwright install chr
                 location = hotel.Location,
                 region = hotel.Region,
                 country = hotel.Country,
+                latitude = hotel.Latitude,
+                longitude = hotel.Longitude,
                 officialUrl = hotel.OfficialUrl,
                 sourceUrl = hotel.SourceUrl,
                 editorialReviewStatus = hotel.EditorialReviewStatus,
@@ -1902,6 +1910,8 @@ public class UpdateHotelRequest
     public string? Location { get; set; }
     public string? Region { get; set; }
     public string? Country { get; set; }
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
     public string? OfficialUrl { get; set; }
     public string? SourceUrl { get; set; }
     public string? EditorialReviewStatus { get; set; }

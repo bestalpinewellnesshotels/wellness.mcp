@@ -14,6 +14,7 @@ public class RecommendationPresentationTests
     [InlineData("Ich suche ein Hotel mit Sauna in Tirol", false)]
     [InlineData("Adults Only Hotel mit Pool", false)]
     [InlineData("Hundefreundliches Wellnesshotel", false)]
+    [InlineData("Welche Hotels kennst du so nah an Salzburg-Stadt wie möglich?", false)]
     public void BroadCatalogQuery_Detection(string text, bool expected)
     {
         Assert.Equal(expected, RecommendationPresentation.IsBroadCatalogQuery(text));
@@ -76,6 +77,24 @@ public class RecommendationPresentationTests
         Assert.Equal(0.70, primary[1].Score, 2);
         Assert.Contains("(0.90)", section);
         Assert.Empty(additional);
+    }
+
+    [Fact]
+    public void StripPlaceholderSourceFooter_RemovesToBeDoneBlock()
+    {
+        var answer = "Hotel Alpbacherhof in Alpbach.\n\n---\n**Quellen:**\n[to be done]";
+        var cleaned = RecommendationPresentation.StripPlaceholderSourceFooter(answer);
+        Assert.Equal("Hotel Alpbacherhof in Alpbach.", cleaned);
+        Assert.DoesNotContain("[to be done]", cleaned);
+        Assert.DoesNotContain("**Quellen:**", cleaned);
+    }
+
+    [Fact]
+    public void StripPlaceholderSourceFooter_LeavesRealUrls()
+    {
+        var answer = "Hotel Engel.\n\n---\n**Quellen:**\n- Engel (0.56): https://engel-tirol.com/suite";
+        var cleaned = RecommendationPresentation.StripPlaceholderSourceFooter(answer);
+        Assert.Equal(answer, cleaned);
     }
 
     private static ContentChunk Chunk(string url, string hotelId) => new()

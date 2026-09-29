@@ -85,6 +85,7 @@ public class HotelScoreDto
     public required string HotelId { get; set; }
     public required string HotelName { get; set; }
     public double Score { get; set; }
+    public double? DistanceKm { get; set; }
 }
 
 /// <summary>
@@ -103,6 +104,13 @@ public class HotelRecommendationDto
     public string Region { get; set; } = HotelPublicDto.NotAvailable;
 
     public string Country { get; set; } = HotelPublicDto.NotAvailable;
+
+    public double? Latitude { get; set; }
+
+    public double? Longitude { get; set; }
+
+    /// <summary>Entfernung in km zum primären Geo-Ziel (nur bei Nähe-Fragen).</summary>
+    public double? DistanceKm { get; set; }
 
     public string OfficialUrl { get; set; } = HotelPublicDto.NotAvailable;
 

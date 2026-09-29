@@ -143,6 +143,18 @@ public static partial class ConversationConstraintHelper
                || FieldContains(hotel.HotelId, needle);
     }
 
+    /// <summary>
+    /// Suchpfad: ohne gesetzte Region nicht verwerfen (lückenhafte Stammdaten).
+    /// Katalog-Filter bleibt bei <see cref="HotelMatchesRegion"/>.
+    /// </summary>
+    public static bool PassesSearchRegionFilter(Hotel hotel, string? region)
+    {
+        if (string.IsNullOrWhiteSpace(region) || hotel is null) return true;
+        if (string.IsNullOrWhiteSpace(hotel.Region))
+            return true;
+        return HotelMatchesRegion(hotel, region);
+    }
+
     public static List<Hotel> FilterByRegion(IEnumerable<Hotel> hotels, string? region)
     {
         if (string.IsNullOrWhiteSpace(region))

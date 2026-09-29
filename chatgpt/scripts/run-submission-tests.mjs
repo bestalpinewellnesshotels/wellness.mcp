@@ -31,6 +31,10 @@ async function mcpCall(sessionId, body) {
 }
 
 function extractToolPayload(rpc) {
+  const structured = rpc?.result?.structuredContent;
+  if (structured && typeof structured === "object" && !Array.isArray(structured)) {
+    return structured;
+  }
   const text = rpc?.result?.content?.[0]?.text;
   if (!text) return { raw: rpc };
   try {

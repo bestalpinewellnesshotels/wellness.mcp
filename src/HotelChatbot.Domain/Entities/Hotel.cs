@@ -29,6 +29,15 @@ public class Hotel
     /// <summary>Land (redaktionell)</summary>
     public string? Country { get; set; }
 
+    /// <summary>WGS84-Breite. Fehlt, bis die Geo-Migration/Seed gelaufen ist.</summary>
+    public double? Latitude { get; set; }
+
+    /// <summary>WGS84-Länge. Fehlt, bis die Geo-Migration/Seed gelaufen ist.</summary>
+    public double? Longitude { get; set; }
+
+    public bool HasCoordinates =>
+        Latitude is >= -90 and <= 90 && Longitude is >= -180 and <= 180;
+
     /// <summary>Offizielle Hotel-URL</summary>
     public string? OfficialUrl { get; set; }
 

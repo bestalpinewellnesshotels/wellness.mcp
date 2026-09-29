@@ -24,6 +24,20 @@ public class ConversationConstraintTests
     }
 
     [Fact]
+    public void PassesSearchRegionFilter_KeepsEmptyMetadata()
+    {
+        var gmachl = new Hotel
+        {
+            HotelId = "hotel_gmachl_at",
+            Name = "Gmachl",
+            Domain = "gmachl.at",
+            IsActive = true
+        };
+        Assert.False(ConversationConstraintHelper.HotelMatchesRegion(gmachl, "Salzburg"));
+        Assert.True(ConversationConstraintHelper.PassesSearchRegionFilter(gmachl, "Salzburg"));
+    }
+
+    [Fact]
     public void FilterByRegion_KeepsMatchingHotels()
     {
         var filtered = ConversationConstraintHelper.FilterByRegion(SampleHotels(), "Tirol");

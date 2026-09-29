@@ -11,6 +11,8 @@ public class HotelPublicDto
     public required string Location { get; set; }
     public required string Region { get; set; }
     public required string Country { get; set; }
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
     public required string OfficialUrl { get; set; }
     public required string SourceUrl { get; set; }
     public required string EditorialReviewStatus { get; set; }
@@ -28,6 +30,8 @@ public class HotelPublicDto
             Location = Display(hotel.Location),
             Region = Display(hotel.Region),
             Country = Display(hotel.Country),
+            Latitude = hotel.HasCoordinates ? hotel.Latitude : null,
+            Longitude = hotel.HasCoordinates ? hotel.Longitude : null,
             OfficialUrl = Display(hotel.ResolveOfficialUrl()),
             SourceUrl = Display(hotel.SourceUrl),
             EditorialReviewStatus = Display(hotel.EditorialReviewStatus),

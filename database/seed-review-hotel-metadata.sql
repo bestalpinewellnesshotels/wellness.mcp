@@ -11,8 +11,8 @@ ALTER TABLE hotels ADD COLUMN IF NOT EXISTS editorial_reviewed_at TIMESTAMP;
 ALTER TABLE hotels ADD COLUMN IF NOT EXISTS categories JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 UPDATE hotels SET
-  location = 'Hinterglemm',
-  region = 'Salzburger Land',
+  location = 'Finkenberg',
+  region = 'Tirol',
   country = 'Austria',
   official_url = 'https://www.stock.at/',
   source_url = 'https://www.stock.at/',

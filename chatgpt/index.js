@@ -40,7 +40,10 @@ const FALLBACK_GET_RESPONSE_DESC = `Search Best Alpine Wellness Hotels using onl
 Call this tool for hotel search and recommendation questions.
 Always pass sessionId from the previous get_response result when one was returned.
 Always pass language as the ISO 639-1 code of the user's chat (de, en, nl, it, fr, …).
-Never invent hotels, prices, availability, or amenities. Use only tool results.`;
+Never invent hotels, prices, availability, or amenities. Use only tool results.
+Do not pass region for city-proximity questions (near Salzburg city); region is a federal state, not a city.
+Show the tool text to the user as-is, including the Quellen/Sources URLs at the end.
+Never write "[to be done]" or an empty Quellen section. If you rewrite, copy every URL from citedSources.`;
 
 const FALLBACK_GET_HOTEL_DETAILS_DESC = `Return details for one hotel from the BestWellness database using a stable hotelId from a previous search.
 Never invent facts. If a field is unavailable, say so clearly.`;
@@ -199,6 +202,9 @@ function mapHotelFromRecommendation(r) {
     location: r.location || "not available",
     region: r.region || "not available",
     country: r.country || "not available",
+    latitude: r.latitude ?? null,
+    longitude: r.longitude ?? null,
+    distanceKm: r.distanceKm ?? null,
     officialUrl: r.officialUrl || "not available",
     sourceUrl: r.sourceUrl || "not available",
     editorialReviewStatus: r.editorialReviewStatus || "not available",
@@ -326,9 +332,39 @@ async function executeTool(toolName, args) {
   return buildResult(FALLBACK_NO_RESULT, "no_results");
 }
 
+function stripPlaceholderSourceFooter(text) {
+  if (!text) return "";
+  return String(text)
+    .replace(/(\r?\n---\s*)?\r?\n\*\*(Quellen|Sources):\*\*\s*(\r?\n\s*\[to be done\]\s*)+/gi, "")
+    .trimEnd();
+}
+
+function sourcesAlreadyInAnswer(text) {
+  return /\*\*(Quellen|Sources):\*\*[\s\S]*https?:\/\//i.test(text || "");
+}
+
+function appendCitedSourcesMarkdown(text, result) {
+  const sources = Array.isArray(result?.citedSources) ? result.citedSources : [];
+  if (sources.length === 0 || sourcesAlreadyInAnswer(text)) return text;
+  const header = "\n\n---\n**Quellen:**\n";
+  const lines = sources
+    .filter((s) => s?.url)
+    .map((s) => `- ${s.hotelName || s.hotelId}: ${s.url}`);
+  if (lines.length === 0) return text;
+  return `${text}${header}${lines.join("\n")}`;
+}
+
 function toToolResponse(result) {
+  // ChatGPT paraphrases JSON blobs and then invents "Quellen: [to be done]".
+  // Send the user-facing answer (with real URLs) as the tool text.
+  let text =
+    typeof result?.answer === "string" && result.answer.trim()
+      ? result.answer
+      : JSON.stringify(result);
+  text = stripPlaceholderSourceFooter(text);
+  text = appendCitedSourcesMarkdown(text, result);
   return {
-    content: [{ type: "text", text: JSON.stringify(result) }],
+    content: [{ type: "text", text }],
     structuredContent: result
   };
 }
@@ -345,7 +381,7 @@ function createMcpServer() {
     },
     {
       instructions:
-        "Use get_response to search hotels, then get_hotel_details with a hotelId from the search. Always pass sessionId from the previous tool result and language as the user's chat ISO code (de, en, …). Only use data returned by tools. Do not invent prices, availability, or amenities."
+        "Use get_response to search hotels, then get_hotel_details with a hotelId from the search. Always pass sessionId from the previous tool result and language as the user's chat ISO code (de, en, …). Only use data returned by tools. Do not invent prices, availability, or amenities. Show the tool text to the user, including the Quellen/Sources URLs. Never replace sources with [to be done]. If you rewrite, copy every URL from citedSources."
     }
   );
 
@@ -359,7 +395,9 @@ function createMcpServer() {
           .string()
           .optional()
           .describe("Free-text search request (optional if structured filters are set)"),
-        region: z.string().optional().describe("Region or area, e.g. Tyrol, Salzburger Land"),
+        region: z.string().optional().describe(
+          "Bundesland only (Tirol, Salzburger Land, …). Do NOT set this for city proximity such as 'near Salzburg city' / 'nah an Salzburg-Stadt'."
+        ),
         travelDates: z.string().optional().describe("Travel dates or season if stated by the user"),
         guests: z.number().int().positive().optional().describe("Number of guests/persons"),
         adultsOnly: z.boolean().optional().describe("Prefer adults-only hotels when true"),
@@ -498,7 +536,10 @@ function getLegacyMcpTools() {
         type: "object",
         properties: {
           message: { type: "string", description: "Free-text search request" },
-          region: { type: "string" },
+          region: {
+            type: "string",
+            description: "Bundesland only. Do not set for city-proximity queries."
+          },
           travelDates: { type: "string" },
           guests: { type: "integer" },
           adultsOnly: { type: "boolean" },
@@ -736,10 +777,7 @@ app.post("/sim/chat", async (req, res) => {
     writeSimSse(res, "tool_result", {
       tool: toolName,
       result: toolResult,
-      chatgptSees: {
-        content: [{ type: "text", text: JSON.stringify(toolResult) }],
-        structuredContent: toolResult
-      },
+      chatgptSees: toToolResponse(toolResult),
       totalMs: Date.now() - t0
     });
     writeSimSse(res, "done", { totalMs: Date.now() - t0 });

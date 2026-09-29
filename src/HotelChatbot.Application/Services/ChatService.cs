@@ -187,7 +187,15 @@ public class ChatService
             }
 
             var rawQuery = queryForSearch;
-            queryForSearch = ConversationConstraintHelper.EnrichSearchQuery(queryForSearch, constraints);
+            var geoIntent = GeoQueryParser.Parse(userQuery);
+            if (!geoIntent.ShouldRerank)
+                geoIntent = GeoQueryParser.Parse(queryForSearch);
+
+            if (!geoIntent.ShouldRerank)
+            {
+                queryForSearch = ConversationConstraintHelper.EnrichSearchQuery(queryForSearch, constraints);
+            }
+
             if (!string.Equals(rawQuery, queryForSearch, StringComparison.Ordinal))
             {
                 _logger.LogInformation("[Search] Query mit Constraints: '{Raw}' → '{Enriched}'", rawQuery, queryForSearch);
@@ -281,11 +289,12 @@ public class ChatService
                 .Where(kvp => hotelDetails.ContainsKey(kvp.Key))
                 .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
-            if (ConversationConstraintHelper.ShouldFilterResultsByRegion(constraints, userQuery))
+            if (ConversationConstraintHelper.ShouldFilterResultsByRegion(constraints, userQuery)
+                && !geoIntent.ShouldRerank)
             {
                 var before = validResults.Count;
                 validResults = validResults
-                    .Where(kvp => ConversationConstraintHelper.HotelMatchesRegion(
+                    .Where(kvp => ConversationConstraintHelper.PassesSearchRegionFilter(
                         hotelDetails[kvp.Key], constraints.Region))
                     .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
                 // Fokus-Hotel nie wegfiltern
@@ -311,6 +320,33 @@ public class ChatService
 
             _logger.LogInformation("[SearchAgent] {HotelCount} Hotels, {ChunkCount} Chunks",
                 validResults.Count, validResults.Values.Sum(v => v.Count));
+
+            GeoRankingResult? geoRanking = null;
+            if (geoIntent.ShouldRerank)
+            {
+                geoRanking = await ApplyGeoRankingAsync(
+                    geoIntent,
+                    userQuery,
+                    queryForSearch,
+                    allActiveHotels,
+                    hotelDetails,
+                    validResults,
+                    maxResults,
+                    ct);
+                await trace.EmitStartAsync("GeoRank", "search",
+                    geoRanking.HasConflict ? "Geo-Konflikt" : "Distanz-Ranking");
+                await trace.EmitEndAsync(
+                    "GeoRank",
+                    "search",
+                    string.Join(", ", geoRanking.OrderedHotelIds),
+                    0,
+                    "ok",
+                    new Dictionary<string, object?>
+                    {
+                        ["conflict"] = geoRanking.HasConflict,
+                        ["selected"] = geoRanking.OrderedHotelIds.ToList()
+                    });
+            }
 
             var scoreSummary = RecommendationPresentation.SummarizeHotelScores(validResults, hotelDetails);
             await trace.EmitStartAsync("HotelScores", "search",
@@ -360,9 +396,9 @@ public class ChatService
                 return AttachTrace(BuildPipelineResponse(false, noResultsAnswer, "no_results", request.Requirements, session.SessionId), trace);
             }
 
-            // Strukturierte Empfehlungen: bei > maxResults die nächstliegenden (höchster Score)
-            var recommendations = BuildRecommendations(validResults, hotelDetails, maxResults);
-            if (scoreSummary.Count > maxResults)
+            // Strukturierte Empfehlungen: Similarity oder Geo-Distanz
+            var recommendations = BuildRecommendations(validResults, hotelDetails, maxResults, geoRanking);
+            if (scoreSummary.Count > maxResults && geoRanking is null)
             {
                 await trace.EmitStartAsync("TopK", "search",
                     $"{scoreSummary.Count} Treffer → Top {maxResults} nach Similarity");
@@ -383,6 +419,8 @@ public class ChatService
 
             // Kontext aus Top-Chunks aufbauen
             var context = BuildRecommendationContext(rankedResults, hotelDetails, maxResults * 3);
+            if (geoRanking != null && !string.IsNullOrWhiteSpace(geoRanking.Briefing))
+                context = geoRanking.Briefing + "\n\n" + context;
 
             // ─── Step 4c: RelevanceAgent ──────────────────────────────────────────
             // Bei klar hohen Similarity-Scores LLM überspringen (Performance).
@@ -393,7 +431,14 @@ public class ChatService
                 .Max();
 
             bool isContextRelevant;
-            if (topScore >= RelevanceScoreSkipThreshold)
+            if (geoRanking != null)
+            {
+                isContextRelevant = true;
+                await trace.EmitStartAsync("Relevance", "llm", "Skip (Geo-Ranking)");
+                await trace.EmitEndAsync("Relevance", "llm", "übersprungen → relevant", 0, "skip",
+                    new Dictionary<string, object?> { ["reason"] = "geo" });
+            }
+            else if (topScore >= RelevanceScoreSkipThreshold)
             {
                 isContextRelevant = true;
                 _logger.LogInformation(
@@ -466,6 +511,7 @@ public class ChatService
                         new Dictionary<string, object?> { ["hotels"] = recommendations.Count, ["chars"] = text.Length });
                 });
 
+            answerText = RecommendationPresentation.StripPlaceholderSourceFooter(answerText);
             var (sourceSection, citedSources, additionalSources) = RecommendationPresentation.BuildWeightedSources(
                 answerText, rankedResults, hotelDetails, language);
             var answer = answerText + sourceSection;
@@ -518,7 +564,12 @@ public class ChatService
                 {
                     HotelId = s.HotelId,
                     HotelName = s.Name,
-                    Score = s.Score
+                    Score = s.Score,
+                    DistanceKm = geoRanking?.Scores
+                        .FirstOrDefault(g => g.HotelId.Equals(s.HotelId, StringComparison.OrdinalIgnoreCase))
+                        ?.PrimaryKm is { } km
+                        ? Math.Round(km, 1)
+                        : null
                 }).ToList()
             }, trace);
         }
@@ -539,6 +590,69 @@ public class ChatService
     }
 
     // ─── Pipeline-Hilfsmethoden ───────────────────────────────────────────────
+
+    private async Task<GeoRankingResult> ApplyGeoRankingAsync(
+        GeoQueryIntent intent,
+        string userQuery,
+        string queryForSearch,
+        IReadOnlyList<Hotel> allActiveHotels,
+        Dictionary<string, Hotel> hotelDetails,
+        Dictionary<string, List<(ContentChunk Chunk, double Score)>> validResults,
+        int maxResults,
+        CancellationToken ct)
+    {
+        var amenityMixed = RecommendationPresentation.HasNonGeoAmenityFilters(
+            userQuery, intent.RequiresSkiLiftAtHotel);
+        var ranking = GeoRanking.Rank(
+            allActiveHotels, validResults.Keys, intent, amenityMixed, maxResults);
+
+        var byId = allActiveHotels.ToDictionary(h => h.HotelId, StringComparer.OrdinalIgnoreCase);
+        foreach (var id in ranking.OrderedHotelIds)
+        {
+            if (!hotelDetails.ContainsKey(id) && byId.TryGetValue(id, out var hotel))
+                hotelDetails[id] = hotel;
+
+            if (validResults.TryGetValue(id, out var existing) && existing.Count > 0)
+                continue;
+
+            List<(ContentChunk Chunk, double Score)> chunks = [];
+            try
+            {
+                chunks = await _vectorStore.SearchAsync(
+                    id, queryForSearch, Math.Max(maxResults, 3), 0.20, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Geo: Chunk-Nachladung fehlgeschlagen für {HotelId}", id);
+            }
+
+            if (chunks.Count == 0 && hotelDetails.TryGetValue(id, out var meta))
+                chunks = [LocationStub(meta)];
+
+            if (chunks.Count > 0)
+                validResults[id] = chunks;
+        }
+
+        return ranking;
+    }
+
+    private static (ContentChunk Chunk, double Score) LocationStub(Hotel hotel)
+    {
+        GeoCatalog.TryGetCoordinates(hotel, out var lat, out var lng);
+        var loc = string.Join(", ", new[] { hotel.Name, hotel.Location, hotel.Region }
+            .Where(s => !string.IsNullOrWhiteSpace(s)));
+        return (new ContentChunk
+        {
+            ChunkId = $"geo-meta:{hotel.HotelId}",
+            HotelId = hotel.HotelId,
+            SourceUrl = hotel.ResolveOfficialUrl() ?? $"https://{hotel.Domain}",
+            Title = "Location",
+            Content = $"{loc}. Coordinates WGS84 {lat:F4}, {lng:F4}.",
+            Language = "de",
+            IsActive = true,
+            CrawledAt = DateTime.UtcNow
+        }, 0.0);
+    }
 
     /// <summary>
     /// Liest die konfigurierte Max-Ergebnisanzahl aus dem Admin-CMS (config.search.max_results).
@@ -882,6 +996,7 @@ public class ChatService
                         PipelineContextWrapper,
                         ct);
 
+                    text = RecommendationPresentation.StripPlaceholderSourceFooter(text);
                     if (sources.Count > 0)
                     {
                         var header = language == "de" ? "\n\n---\n**Quellen:**" : "\n\n---\n**Sources:**";
@@ -1150,14 +1265,19 @@ public class ChatService
     private static List<HotelRecommendationDto> BuildRecommendations(
         Dictionary<string, List<(ContentChunk Chunk, double Score)>> results,
         Dictionary<string, Hotel> hotelDetails,
-        int maxResults)
+        int maxResults,
+        GeoRankingResult? geoRanking = null)
     {
-        return results
+        var mapped = results
+            .Where(kvp => hotelDetails.ContainsKey(kvp.Key) && kvp.Value.Count > 0)
             .Select(kvp =>
             {
                 var hotel = hotelDetails[kvp.Key];
                 var best = kvp.Value.OrderByDescending(x => x.Score).First();
                 var pub = HotelPublicDto.FromHotel(hotel);
+                GeoCatalog.TryGetCoordinates(hotel, out var lat, out var lng);
+                var geoScore = geoRanking?.Scores
+                    .FirstOrDefault(s => s.HotelId.Equals(hotel.HotelId, StringComparison.OrdinalIgnoreCase));
                 var sources = kvp.Value
                     .Select(x => x.Chunk.SourceUrl)
                     .Where(u => !string.IsNullOrWhiteSpace(u))
@@ -1180,22 +1300,46 @@ public class ChatService
                     Location = pub.Location,
                     Region = pub.Region,
                     Country = pub.Country,
+                    Latitude = hotel.HasCoordinates || GeoCatalog.HotelCoordinates.ContainsKey(hotel.HotelId)
+                        ? Math.Round(lat, 6)
+                        : null,
+                    Longitude = hotel.HasCoordinates || GeoCatalog.HotelCoordinates.ContainsKey(hotel.HotelId)
+                        ? Math.Round(lng, 6)
+                        : null,
+                    DistanceKm = geoScore == null ? null : Math.Round(geoScore.PrimaryKm, 1),
                     OfficialUrl = pub.OfficialUrl,
                     SourceUrl = pub.SourceUrl,
                     EditorialReviewStatus = pub.EditorialReviewStatus,
                     EditorialReviewedAt = pub.EditorialReviewedAt,
                     Categories = pub.Categories,
                     MatchScore = best.Score,
-                    Reason = !string.IsNullOrWhiteSpace(best.Chunk.Title)
-                        ? best.Chunk.Title!
-                        : "Matched from approved hotel content",
+                    Reason = geoRanking != null
+                        ? "Distance to requested location"
+                        : !string.IsNullOrWhiteSpace(best.Chunk.Title)
+                            ? best.Chunk.Title!
+                            : "Matched from approved hotel content",
                     MatchingFeatures = features,
                     Sources = sources,
                     Rank = 0
                 };
             })
-            .OrderByDescending(r => r.MatchScore)
-            .Take(maxResults)
+            .ToList();
+
+        IEnumerable<HotelRecommendationDto> ordered;
+        if (geoRanking is { OrderedHotelIds.Count: > 0 })
+        {
+            var byId = mapped.ToDictionary(r => r.HotelId, StringComparer.OrdinalIgnoreCase);
+            ordered = geoRanking.OrderedHotelIds
+                .Where(byId.ContainsKey)
+                .Select(id => byId[id])
+                .Take(maxResults);
+        }
+        else
+        {
+            ordered = mapped.OrderByDescending(r => r.MatchScore).Take(maxResults);
+        }
+
+        return ordered
             .Select((r, index) =>
             {
                 r.Rank = index + 1;
@@ -1436,7 +1580,9 @@ public class ChatService
         "RULE 2 – General knowledge (ALLOWED): You MAY use general world knowledge to answer factual questions ABOUT the hotels in the results " +
         "(e.g. distances, nearby airports, restaurants, travel time, regional geography). Mark approximations clearly.\n" +
         "RULE 3 – Conversation grounding: Respect prior user constraints from the conversation history (region, previously discussed hotel, “dort/there”). " +
-        "If the user asked about a region earlier, stay within that region unless they clearly change topic. Prefer the focused hotel when they use deixis.";
+        "If the user asked about a region earlier, stay within that region unless they clearly change topic. Prefer the focused hotel when they use deixis.\n" +
+        "RULE 4 – GEO: If DATABASE RESULTS start with a GEO CONSTRAINTS block, treat those distances and conflict notes as authoritative for closeness/location. " +
+        "Do not call a far-away hotel the closest to a city. If a conflict is stated, explain it and present the poles; do not invent hotels.";
 
     private const string FallbackAnswerPrompt =
         "You are a friendly hotel search assistant for BestWellness wellness hotels.\n" +
@@ -1446,7 +1592,9 @@ public class ChatService
         "When the user asks about seasonal offers, list ONLY offers matching that season in the results.\n" +
         "ALLOWED – general knowledge: You MAY use general world knowledge for factual questions ABOUT hotels in the results (distances, geography). Mark approximations clearly.\n" +
         "CONVERSATION GROUNDING: Honor prior constraints in the chat history (region, focused hotel, deixis like “dort”). Do not widen to other regions unless the user asks.\n" +
-        "Be concise, helpful, and professional.";
+        "GEO: If the database results include a GEO CONSTRAINTS block, treat it as authoritative for closeness. Explain stated conflicts; do not invent hotels.\n" +
+        "Be concise, helpful, and professional.\n" +
+        "Do not write a Quellen/Sources footer and never write [to be done]. Source URLs are appended automatically.";
 
     private const string FallbackNoResultsPrompt =
         "Compose a brief, friendly message in {language} informing the user that no matching hotels were found in the BestWellness database for their request.\n" +

@@ -116,6 +116,38 @@ GESPRÄCHSKONTEXT:
 - Bezieht er sich auf ein zuvor besprochenes Hotel, bleibe bei diesem Hotel.
 """,
             cancellationToken);
+
+        await EnsurePromptFragmentAsync(
+            conn,
+            "pipeline.answer",
+            "[to be done]",
+            """
+
+Formatting:
+- Do not write a Quellen/Sources footer and never write "[to be done]". Source URLs are appended automatically after your response.
+""",
+            "[to be done]",
+            """
+
+Formatierung:
+- Schreibe keinen Quellen-Footer und niemals „[to be done]“. Die Quell-URLs werden automatisch nach deiner Antwort angehängt.
+""",
+            cancellationToken);
+
+        await EnsurePromptFragmentAsync(
+            conn,
+            "mcp.get_response.description",
+            "citedSources",
+            """
+
+10. Keep the Quellen/Sources block with every URL. NEVER write "[to be done]" or an empty Quellen section. If you rewrite the answer, copy each citedSources URL as "- {hotelName}: {url}".
+""",
+            "citedSources",
+            """
+
+10. Behalte den Quellen-Block mit allen URLs. Schreibe NIEMALS „[to be done]“ oder einen leeren Quellen-Abschnitt. Wenn du umformulierst, kopiere jede citedSources-URL als „- {hotelName}: {url}“.
+""",
+            cancellationToken);
     }
 
     /// <summary>
@@ -520,7 +552,7 @@ STRICT rule - factual accuracy:
 
 Formatting:
 - Be concise, helpful, and professional.
-- Do not repeat the source URLs - they will be appended automatically after your response.
+- Do not write a Quellen/Sources footer and never write "[to be done]". Source URLs are appended automatically after your response.
 """,
             ContentDe   = """
 Du bist ein freundlicher Hotelsuch-Assistent für BestWellness Wellnesshotels.
@@ -548,7 +580,7 @@ STRIKTE Regel – sachliche Genauigkeit:
 
 Formatierung:
 - Sei präzise, hilfreich und professionell.
-- Wiederhole nicht die Quell-URLs – sie werden automatisch nach deiner Antwort angehängt.
+- Schreibe keinen Quellen-Footer und niemals „[to be done]“. Die Quell-URLs werden automatisch nach deiner Antwort angehängt.
 """
         },
         new()
@@ -610,6 +642,7 @@ FORBIDDEN – hotel facts from training data:
 
 Output:
 9. Output the exact text from the "answer" field — then you may add brief general-knowledge context about hotel(s) already in the answer if it directly answers the user's question.
+10. Keep the Quellen/Sources block with every URL. NEVER write "[to be done]" or an empty Quellen section. If you rewrite the answer, copy each citedSources URL as "- {hotelName}: {url}".
 """,
             ContentDe   = """
 Du bist ein Assistent für die BestWellness-Hotelplattform. Dieses Tool MUSS für JEDE Benutzernachricht still aufgerufen werden. Gib das Feld „answer“ aus, ohne den Toolaufruf anzukündigen.
@@ -630,6 +663,7 @@ VERBOTEN – Hotelfakten aus Trainingswissen:
 
 Ausgabe:
 9. Gib den exakten Text aus dem Feld „answer“ aus – danach darfst du kurzen Allgemeinwissen-Kontext zu den bereits in der Antwort enthaltenen Hotels ergänzen, wenn das die Frage des Nutzers direkt beantwortet.
+10. Behalte den Quellen-Block mit allen URLs. Schreibe NIEMALS „[to be done]“ oder einen leeren Quellen-Abschnitt. Wenn du umformulierst, kopiere jede citedSources-URL als „- {hotelName}: {url}“.
 """
         },
         new()
@@ -655,8 +689,8 @@ STRENGE REGELN: Gib NUR das Feld "answer" aus. Füge niemals Hotelnamen, Alterna
             Name        = "MCP: Ergebnis-Anweisung (Treffer)",
             Description = "Wird jeder erfolgreichen Tool-Antwort als _instruction-Feld beigefügt. Sagt ChatGPT: nur den 'answer'-Text ausgeben, nichts hinzufügen.",
             Language    = null,
-            Content     = "Output the exact text in 'answer'. Every hotel NAME you mention must come from this tool response — never add hotels from outside the database. You MAY add brief general-knowledge context (distances, nearby airports, restaurants) about the hotels already present in the answer.",
-            ContentDe   = "Gib den genauen Text in 'answer' aus. Jeder Hotelname, den du nennst, muss aus dieser Tool-Antwort stammen – füge niemals Hotels hinzu, die nicht in der Datenbank sind. Du DARFST kurzen Allgemeinwissen-Kontext (Entfernungen, nahegelegene Flughäfen, Restaurants) zu den bereits in der Antwort enthaltenen Hotels hinzufügen."
+            Content     = "Output the exact text in 'answer', including the Quellen/Sources URLs. Never write [to be done]. Every hotel NAME you mention must come from this tool response — never add hotels from outside the database. You MAY add brief general-knowledge context (distances, nearby airports, restaurants) about the hotels already present in the answer.",
+            ContentDe   = "Gib den genauen Text in 'answer' aus, einschließlich der Quellen-URLs. Schreibe niemals [to be done]. Jeder Hotelname, den du nennst, muss aus dieser Tool-Antwort stammen – füge niemals Hotels hinzu, die nicht in der Datenbank sind. Du DARFST kurzen Allgemeinwissen-Kontext (Entfernungen, nahegelegene Flughäfen, Restaurants) zu den bereits in der Antwort enthaltenen Hotels hinzufügen."
         },
         new()
         {

@@ -20,7 +20,7 @@ public class PostgreSQLHotelRepository : IHotelRepository
         hotel_id, name, domain, allowed_domains, api_key, is_active,
         location, region, country, official_url, source_url,
         editorial_review_status, editorial_reviewed_at, categories,
-        created_at, updated_at";
+        created_at, updated_at, latitude, longitude";
 
     public PostgreSQLHotelRepository(
         IConfiguration configuration,
@@ -61,6 +61,8 @@ public class PostgreSQLHotelRepository : IHotelRepository
             ALTER TABLE hotels ADD COLUMN IF NOT EXISTS editorial_review_status TEXT;
             ALTER TABLE hotels ADD COLUMN IF NOT EXISTS editorial_reviewed_at TIMESTAMP;
             ALTER TABLE hotels ADD COLUMN IF NOT EXISTS categories JSONB NOT NULL DEFAULT '[]'::jsonb;
+            ALTER TABLE hotels ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+            ALTER TABLE hotels ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
         ";
 
         await using var cmd = new NpgsqlCommand(createTableSql, conn);
@@ -90,7 +92,9 @@ public class PostgreSQLHotelRepository : IHotelRepository
             EditorialReviewedAt = reader.IsDBNull(12) ? null : reader.GetDateTime(12),
             Categories = JsonSerializer.Deserialize<List<string>>(categoriesJson) ?? new List<string>(),
             CreatedAt = reader.IsDBNull(14) ? DateTime.UtcNow : reader.GetDateTime(14),
-            UpdatedAt = reader.IsDBNull(15) ? DateTime.UtcNow : reader.GetDateTime(15)
+            UpdatedAt = reader.IsDBNull(15) ? DateTime.UtcNow : reader.GetDateTime(15),
+            Latitude = reader.FieldCount > 16 && !reader.IsDBNull(16) ? reader.GetDouble(16) : null,
+            Longitude = reader.FieldCount > 17 && !reader.IsDBNull(17) ? reader.GetDouble(17) : null
         };
     }
 
@@ -206,12 +210,14 @@ public class PostgreSQLHotelRepository : IHotelRepository
             INSERT INTO hotels (
                 hotel_id, name, domain, allowed_domains, api_key, is_active,
                 location, region, country, official_url, source_url,
-                editorial_review_status, editorial_reviewed_at, categories
+                editorial_review_status, editorial_reviewed_at, categories,
+                latitude, longitude
             )
             VALUES (
                 $1, $2, $3, $4::jsonb, $5, $6,
                 $7, $8, $9, $10, $11,
-                $12, $13, $14::jsonb
+                $12, $13, $14::jsonb,
+                $15, $16
             )
             ON CONFLICT (hotel_id)
             DO UPDATE SET
@@ -228,6 +234,8 @@ public class PostgreSQLHotelRepository : IHotelRepository
                 editorial_review_status = EXCLUDED.editorial_review_status,
                 editorial_reviewed_at = EXCLUDED.editorial_reviewed_at,
                 categories = EXCLUDED.categories,
+                latitude = COALESCE(EXCLUDED.latitude, hotels.latitude),
+                longitude = COALESCE(EXCLUDED.longitude, hotels.longitude),
                 updated_at = NOW();
         ";
 
@@ -246,6 +254,8 @@ public class PostgreSQLHotelRepository : IHotelRepository
         cmd.Parameters.AddWithValue((object?)hotel.EditorialReviewStatus ?? DBNull.Value);
         cmd.Parameters.AddWithValue((object?)hotel.EditorialReviewedAt ?? DBNull.Value);
         cmd.Parameters.AddWithValue(JsonSerializer.Serialize(hotel.Categories ?? new List<string>()));
+        cmd.Parameters.AddWithValue((object?)hotel.Latitude ?? DBNull.Value);
+        cmd.Parameters.AddWithValue((object?)hotel.Longitude ?? DBNull.Value);
 
         await cmd.ExecuteNonQueryAsync(cancellationToken);
 

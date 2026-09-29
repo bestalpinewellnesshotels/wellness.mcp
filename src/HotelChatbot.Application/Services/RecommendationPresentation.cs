@@ -23,6 +23,9 @@ public static partial class RecommendationPresentation
 
         var t = text.Trim().ToLowerInvariant();
 
+        if (GeoQueryParser.Parse(text).IsProximityQuery)
+            return false;
+
         // Starke Filter → normale Vektorsuche
         if (HasStrongFilters(t))
             return false;
@@ -38,7 +41,16 @@ public static partial class RecommendationPresentation
         return MoreSourcesRegex().IsMatch(t);
     }
 
-    private static bool HasStrongFilters(string lower)
+    public static bool HasNonGeoAmenityFilters(string text, bool ignoreSki)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+        return HasStrongFilters(text.Trim().ToLowerInvariant(), ignoreSki);
+    }
+
+    private static bool HasStrongFilters(string lower) => HasStrongFilters(lower, ignoreSki: false);
+
+    private static bool HasStrongFilters(string lower, bool ignoreSki)
     {
         string[] markers =
         [
@@ -47,7 +59,11 @@ public static partial class RecommendationPresentation
             "familie", "family", "kinder", "children", "budget", "preis", "günstig",
             "luxus", "luxury", "therme", "golf", "e-auto", "ladestation", "elektro"
         ];
-        return markers.Any(m => lower.Contains(m, StringComparison.Ordinal));
+        return markers.Any(m =>
+        {
+            if (ignoreSki && (m is "ski" or "schi")) return false;
+            return lower.Contains(m, StringComparison.Ordinal);
+        });
     }
 
     public static List<Hotel> Shuffle(IEnumerable<Hotel> hotels, Random? rng = null)
@@ -122,6 +138,16 @@ public static partial class RecommendationPresentation
             sb.Append("Für welches Hotel interessieren Sie sich? Nennen Sie Name oder hotelId — oder beschreiben Sie genauer, was Sie suchen (z. B. Sauna, Adults only, hundefreundlich).");
         }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Entfernt LLM-/ChatGPT-Platzhalter „Quellen: [to be done]“, bevor echte URLs angehängt werden.
+    /// </summary>
+    public static string StripPlaceholderSourceFooter(string? answer)
+    {
+        if (string.IsNullOrWhiteSpace(answer))
+            return answer ?? string.Empty;
+        return PlaceholderSourceFooterRegex().Replace(answer, "").TrimEnd();
     }
 
     /// <summary>
@@ -257,4 +283,9 @@ public static partial class RecommendationPresentation
         @"\b(weitere\s+quellen|more\s+sources|additional\s+sources)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex MoreSourcesRegex();
+
+    [GeneratedRegex(
+        @"(\r?\n---\s*)?\r?\n\*\*(Quellen|Sources):\*\*\s*(\r?\n\s*\[to be done\]\s*)+",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex PlaceholderSourceFooterRegex();
 }
