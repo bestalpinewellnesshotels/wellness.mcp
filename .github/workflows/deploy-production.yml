@@ -65,8 +65,6 @@ jobs:
           OPENAI_EMBEDDING_DIMENSIONS: ${{ secrets.OPENAI_EMBEDDING_DIMENSIONS }}
           SPEECH_KEY: ${{ secrets.SPEECH_KEY }}
           SPEECH_REGION: ${{ secrets.SPEECH_REGION }}
-          ELEVENLABS_KEY: ${{ secrets.ELEVENLABS_KEY }}
-          ELEVENLABS_VOICE: ${{ secrets.ELEVENLABS_VOICE }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           HOTEL_PASSWORD: ${{ secrets.HOTEL_PASSWORD }}
           TOKEN_SECRET: ${{ secrets.TOKEN_SECRET }}
@@ -112,8 +110,6 @@ jobs:
             OpenAiEmbeddingDimensions = (Coalesce $env:OPENAI_EMBEDDING_DIMENSIONS "1536")
             SpeechSubscriptionKey     = (Coalesce $env:SPEECH_KEY "")
             SpeechServiceRegion       = (Coalesce $env:SPEECH_REGION "germanywestcentral")
-            ElevenLabsApiKey          = (Coalesce $env:ELEVENLABS_KEY "")
-            ElevenLabsVoiceId         = (Coalesce $env:ELEVENLABS_VOICE "")
             AdminPassword             = $env:ADMIN_PASSWORD
             HotelPassword             = $env:HOTEL_PASSWORD
             TokenSecret               = $env:TOKEN_SECRET

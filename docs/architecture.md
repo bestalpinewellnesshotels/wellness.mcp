@@ -96,7 +96,6 @@ HotelChatbot.Domain/
 │   ├── IVectorStore.cs            # Vector Store Interface
 │   ├── IChatCompletionService.cs  # LLM Interface
 │   ├── ISpeechToTextService.cs    # STT Interface
-│   ├── ITextToSpeechService.cs    # TTS Interface
 │   ├── IHotelRepository.cs        # Hotel Repository
 │   └── IChatSessionRepository.cs  # Session Repository
 └── Enums/
@@ -110,14 +109,12 @@ HotelChatbot.Application/
     ├── ChatRequestDto.cs
     ├── ChatResponseDto.cs
     ├── VoiceToTextRequestDto.cs
-    ├── VoiceToTextResponseDto.cs
-    └── TextToVoiceRequestDto.cs
+    └── VoiceToTextResponseDto.cs
 
 HotelChatbot.Infrastructure/
 ├── Services/
 │   ├── OpenAIChatCompletionService.cs  # OpenAI Implementation
-│   ├── SpeechToTextService.cs          # Azure Speech STT
-│   └── TextToSpeechService.cs          # Azure Speech TTS
+│   └── SpeechToTextService.cs          # Azure Speech STT
 ├── VectorStore/
 │   ├── QdrantVectorStore.cs            # Qdrant Implementation
 │   └── InMemoryVectorStore.cs          # In-Memory für Dev
@@ -206,23 +203,6 @@ Response:
   "detectedLanguage": "de",
   "confidenceScore": 0.92
 }
-```
-
-### Voice (TTS)
-```
-POST /api/voice/synthesize
-Content-Type: application/json
-
-Request:
-{
-  "text": "Hallo, wie kann ich helfen?",
-  "language": "de-DE",
-  "voice": "de-DE-ConradNeural"
-}
-
-Response:
-Content-Type: audio/mpeg
-(Audio Stream)
 ```
 
 ---

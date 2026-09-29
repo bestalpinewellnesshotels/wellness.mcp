@@ -323,39 +323,4 @@ export class ChatbotWidget extends HTMLElement {
         };
         localStorage.setItem(key, JSON.stringify(data));
     }
-
-    /**
-     * Spielt Antwort als Audio ab (Text-to-Speech)
-     */
-    private async playResponseAudio(text: string) {
-        try {
-            const url = `${this.apiBase}/api/voice/synthesize`;
-            
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    text: text,
-                    language: 'de-DE'
-                })
-            });
-
-            if (response.ok) {
-                const audioBlob = await response.blob();
-                const audioUrl = URL.createObjectURL(audioBlob);
-                const audio = new Audio(audioUrl);
-                
-                audio.onended = () => {
-                    URL.revokeObjectURL(audioUrl);
-                };
-                
-                await audio.play();
-            }
-        } catch (error) {
-            console.error('Error playing audio:', error);
-            // Fehler nicht anzeigen - TTS ist optional
-        }
-    }
 }

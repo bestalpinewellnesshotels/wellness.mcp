@@ -40,7 +40,6 @@ builder.Services.AddCors(options =>
 });
 
 // HttpClient für Services
-builder.Services.AddHttpClient<ITextToSpeechService, TextToSpeechService>();
 builder.Services.AddHttpClient<ICrawlerService, WebCrawlerService>();
 builder.Services.AddHttpClient();  // IHttpClientFactory für PlaywrightCrawlerService
 
@@ -50,7 +49,6 @@ builder.Services.AddSingleton<IIntentClassifier, HotelChatbot.Infrastructure.Cla
 builder.Services.AddSingleton<IEthicalClassifier, HotelChatbot.Infrastructure.Classifiers.EthicalClassifierService>();
 builder.Services.AddSingleton<IChatCompletionService, OpenAIChatCompletionService>();
 builder.Services.AddScoped<ISpeechToTextService, SpeechToTextService>();
-builder.Services.AddScoped<ITextToSpeechService, TextToSpeechService>();
 builder.Services.AddSingleton<IEmbeddingService, AzureOpenAIEmbeddingService>();
 // ICrawlerService: nur über AddHttpClient oben (kein doppeltes AddScoped)
 
@@ -129,11 +127,7 @@ app.MapGet("/", () => Results.Json(new
             }
         },
         chat = "POST /api/chat",
-        voice = new
-        {
-            transcribe = "POST /api/voice/transcribe",
-            synthesize = "POST /api/voice/synthesize"
-        }
+        voice = "POST /api/voice/transcribe"
     },
     quickStart = new
     {

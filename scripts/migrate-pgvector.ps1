@@ -1,5 +1,5 @@
 # Migration zu pgvector
-$connectionString = "Host=dev-universe.net;Port=5432;Database=Bwchat;Username=bwchatuser;Password=0#PLsqi59Lsytj*j;SSL Mode=Prefer;Trust Server Certificate=true"
+$connectionString = "Host=dev-universe.net;Port=5432;Database=Bwchat;Username=bwchatuser;Password=YOUR_PASSWORD;SSL Mode=Prefer;Trust Server Certificate=true"
 
 $dllPath = ".\src\HotelChatbot.Api\bin\Debug\net10.0\Npgsql.dll"
 Add-Type -Path $dllPath

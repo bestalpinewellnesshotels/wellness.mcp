@@ -132,7 +132,7 @@ POST /api/admin/index-content
 3. ✅ Produktions-Datenbank (PostgreSQL)
 4. ✅ Monitoring & Analytics
 5. ✅ Rate Limiting implementieren
-6. ✅ Speech-to-Text / Text-to-Speech aktivieren
+6. ✅ Speech-to-Text aktivieren
 
 ## Support
 

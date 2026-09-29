@@ -2,7 +2,7 @@ using Npgsql;
 using System;
 using System.IO;
 
-var connectionString = "Host=dev-universe.net;Port=5432;Database=Bwchat;Username=bwchatuser;Password=0#PLsqi59Lsytj*j";
+var connectionString = "Host=dev-universe.net;Port=5432;Database=Bwchat;Username=bwchatuser;Password=YOUR_PASSWORD";
 
 Console.WriteLine("Starting pgvector migration...\n");
 

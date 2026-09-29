@@ -102,8 +102,6 @@ function Get-DefaultConfig {
         OpenAiEmbeddingDimensions = if ($dev.OpenAI.EmbeddingDimensions) { [string]$dev.OpenAI.EmbeddingDimensions } else { "1536" }
         SpeechSubscriptionKey     = if ($dev.SpeechService.SubscriptionKey) { [string]$dev.SpeechService.SubscriptionKey } else { "" }
         SpeechServiceRegion       = if ($dev.SpeechService.ServiceRegion) { [string]$dev.SpeechService.ServiceRegion } else { "germanywestcentral" }
-        ElevenLabsApiKey          = if ($dev.ElevenLabs.ApiKey) { [string]$dev.ElevenLabs.ApiKey } else { "" }
-        ElevenLabsVoiceId         = if ($dev.ElevenLabs.VoiceId) { [string]$dev.ElevenLabs.VoiceId } else { "" }
         AdminPassword             = ""
         HotelPassword             = ""
         TokenSecret               = ""
@@ -507,8 +505,6 @@ function New-ProductionAppSettings {
         -replace '\{\{OPENAI_EMBEDDING_DIMENSIONS\}\}', $Config.OpenAiEmbeddingDimensions `
         -replace '\{\{SPEECH_KEY\}\}', $Config.SpeechSubscriptionKey `
         -replace '\{\{SPEECH_REGION\}\}', $Config.SpeechServiceRegion `
-        -replace '\{\{ELEVENLABS_KEY\}\}', $Config.ElevenLabsApiKey `
-        -replace '\{\{ELEVENLABS_VOICE\}\}', $Config.ElevenLabsVoiceId `
         -replace '\{\{ADMIN_PASSWORD\}\}', ($Config.AdminPassword -replace '\$','$$$$') `
         -replace '\{\{HOTEL_PASSWORD\}\}', ($Config.HotelPassword -replace '\$','$$$$') `
         -replace '\{\{TOKEN_SECRET\}\}', ($Config.TokenSecret -replace '\$','$$$$')

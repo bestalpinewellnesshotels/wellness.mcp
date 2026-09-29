@@ -23,8 +23,6 @@ Repository → Settings → Secrets and variables → Actions → New repository
 | `OPENAI_EMBEDDING_DIMENSIONS` | `1536` |
 | `SPEECH_KEY` | optional |
 | `SPEECH_REGION` | `germanywestcentral` |
-| `ELEVENLABS_KEY` | optional |
-| `ELEVENLABS_VOICE` | optional |
 | `ADMIN_PASSWORD` | Admin-Passwort |
 | `HOTEL_PASSWORD` | Hotel-Passwort |
 | `TOKEN_SECRET` | langer Zufallsstring |

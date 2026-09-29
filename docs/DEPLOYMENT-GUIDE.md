@@ -141,12 +141,12 @@ nano appsettings.Production.json
   "AllowedHosts": "*",
   
   "ConnectionStrings": {
-    "PostgreSQL": "Host=dev-universe.net;Port=5432;Database=Bwchat;Username=bwchatuser;Password=0#PLsqi59Lsytj*j;SSL Mode=Prefer;Trust Server Certificate=true"
+    "PostgreSQL": "Host=dev-universe.net;Port=5432;Database=Bwchat;Username=bwchatuser;Password=YOUR_PASSWORD;SSL Mode=Prefer;Trust Server Certificate=true"
   },
   
   "OpenAI": {
     "Endpoint": "https://codeaustriaazureopenai.openai.azure.com/",
-    "ApiKey": "2UC511uZOtL2vXuRlL9E2UVyl0a3Lr0atQIrYIg30igllrnOoqb1JQQJ99CAACPV0roXJ3w3AAABACOGyOrD",
+    "ApiKey": "YOUR_API_KEY",
     "DeploymentName": "gpt-4.1-mini",
     "EmbeddingDeploymentName": "text-embedding-3-small",
     "EmbeddingDimensions": 1536
@@ -159,14 +159,8 @@ nano appsettings.Production.json
   },
   
   "SpeechService": {
-    "SubscriptionKey": "2b75e8a82f324bfcb14db13631e247b6",
+    "SubscriptionKey": "YOUR_SPEECH_KEY",
     "ServiceRegion": "germanywestcentral"
-  },
-  
-  "ElevenLabs": {
-    "ApiKey": "sk_651f9ec6eced052a3267cab0712cfdc704982ddd39ab36ff",
-    "VoiceId": "AegZIKlFnsDvogah9TeB",
-    "BaseUrl": "https://api.elevenlabs.io/v1/text-to-speech/"
   }
 }
 ```

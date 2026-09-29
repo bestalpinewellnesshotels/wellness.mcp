@@ -26,11 +26,9 @@ $DeployConfig = @{
     OpenAiEmbeddingDeployment   = "text-embedding-3-small"
     OpenAiEmbeddingDimensions   = 1536
 
-    # Optional: Speech / ElevenLabs (leer lassen wenn nicht genutzt)
+    # Optional: Azure Speech-to-Text (leer lassen wenn nicht genutzt)
     SpeechSubscriptionKey = ""
     SpeechServiceRegion   = "germanywestcentral"
-    ElevenLabsApiKey      = ""
-    ElevenLabsVoiceId     = ""
 
     # Admin-Oberflaeche (/admin) – in Produktion starke Passwoerter setzen
     AdminPassword = "CHANGE_ME"

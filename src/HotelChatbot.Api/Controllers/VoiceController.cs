@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace HotelChatbot.Api.Controllers;
 
 /// <summary>
-/// Voice-Controller für Speech-to-Text und Text-to-Speech.
+/// Voice-Controller für Speech-to-Text.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -73,46 +73,4 @@ public class VoiceController : ControllerBase
             return StatusCode(500, new { error = "Interner Serverfehler" });
         }
     }
-
-    /// <summary>
-    /// Text-to-Speech: Konvertiert Text in Audio.
-    /// </summary>
-    [HttpPost("synthesize")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> SynthesizeSpeech(
-        [FromBody] SynthesizeRequestDto request,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(request.Text))
-            {
-                return BadRequest(new { error = "Text ist erforderlich" });
-            }
-
-            var audioStream = await _voiceService.SynthesizeSpeechAsync(
-                request.Text,
-                request.Language ?? "de-DE",
-                request.Voice,
-                cancellationToken);
-
-            return File(audioStream, "audio/mpeg", "speech.mp3");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Fehler bei TTS");
-            return StatusCode(500, new { error = "Interner Serverfehler" });
-        }
-    }
-}
-
-/// <summary>
-/// DTO für Text-to-Speech Anfrage.
-/// </summary>
-public class SynthesizeRequestDto
-{
-    public required string Text { get; set; }
-    public string? Language { get; set; }
-    public string? Voice { get; set; }
 }

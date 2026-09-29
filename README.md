@@ -163,13 +163,6 @@ Body: { hotelId, sessionId, audioDataBase64, audioFormat }
 Response: { text, detectedLanguage, confidenceScore }
 ```
 
-### Voice (Text-to-Speech)
-```
-POST /api/voice/synthesize
-Body: { text, language, voice }
-Response: audio/mpeg (Stream)
-```
-
 ## 🧪 Testing
 
 Backend testen:

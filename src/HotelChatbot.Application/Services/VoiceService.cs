@@ -5,21 +5,18 @@ using Microsoft.Extensions.Logging;
 namespace HotelChatbot.Application.Services;
 
 /// <summary>
-/// Service für Voice-Funktionalität (Speech-to-Text und Text-to-Speech).
+/// Service für Voice-Funktionalität (Speech-to-Text).
 /// </summary>
 public class VoiceService
 {
     private readonly ISpeechToTextService _sttService;
-    private readonly ITextToSpeechService _ttsService;
     private readonly ILogger<VoiceService> _logger;
 
     public VoiceService(
         ISpeechToTextService sttService,
-        ITextToSpeechService ttsService,
         ILogger<VoiceService> logger)
     {
         _sttService = sttService;
-        _ttsService = ttsService;
         _logger = logger;
     }
 
@@ -41,29 +38,6 @@ public class VoiceService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Fehler bei Audio-Transkription");
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Konvertiert Text in Audio (Text-to-Speech).
-    /// </summary>
-    public async Task<Stream> SynthesizeSpeechAsync(
-        string text,
-        string language,
-        string? voice = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            _logger.LogInformation("Starte Text-to-Speech für Text: {Text}", text);
-            var audioStream = await _ttsService.SynthesizeAsync(text, language, voice, cancellationToken);
-            _logger.LogInformation("Text-to-Speech erfolgreich");
-            return audioStream;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Fehler bei Text-to-Speech");
             throw;
         }
     }

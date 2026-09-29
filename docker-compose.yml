@@ -22,9 +22,6 @@ services:
       - OpenAI__EmbeddingDimensions=1536
       - SpeechService__SubscriptionKey=${SPEECH_KEY}
       - SpeechService__ServiceRegion=${SPEECH_REGION:-germanywestcentral}
-      - ElevenLabs__ApiKey=${ELEVENLABS_API_KEY}
-      - ElevenLabs__VoiceId=${ELEVENLABS_VOICE_ID}
-      - ElevenLabs__BaseUrl=https://api.elevenlabs.io/v1/text-to-speech/
       - AdminAuth__AdminPassword=${ADMIN_PASSWORD}
       - AdminAuth__HotelPassword=${HOTEL_PASSWORD}
       - AdminAuth__TokenSecret=${ADMIN_TOKEN_SECRET}
