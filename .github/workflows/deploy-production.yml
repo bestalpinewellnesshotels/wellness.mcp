@@ -128,9 +128,9 @@ jobs:
           DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
           DEPLOY_PUBLIC_URL: ${{ secrets.DEPLOY_PUBLIC_URL }}
         run: |
-          $deployArgs = @("-NonInteractive")
+          $deployArgs = @{ NonInteractive = $true }
           if ($env:GITHUB_EVENT_NAME -eq "workflow_dispatch" -and "${{ inputs.with_configuration }}" -eq "true") {
-            $deployArgs += "-WithConfiguration"
+            $deployArgs.WithConfiguration = $true
             Write-Host "Deploy MIT Ueberschreiben der Server-Konfiguration."
           } else {
             Write-Host "Deploy ohne Konfigurations-Ueberschreiben."
